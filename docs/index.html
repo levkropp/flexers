@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flexers - Rust ESP32 Emulator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/main.css">
+</head>
+<body>
+    <!-- Circuit background animation -->
+    <canvas id="circuit-bg"></canvas>
+
+    <nav>
+        <div class="container">
+            <a href="#" class="logo">
+                <span class="flex">flex</span><span class="ers">ers</span>
+            </a>
+            <ul class="nav-links">
+                <li><a href="#features">Features</a></li>
+                <li><a href="#architecture">Architecture</a></li>
+                <li><a href="#roadmap">Roadmap</a></li>
+                <li><a href="/flexers/blog/">Blog</a></li>
+                <li><a href="/flexers/docs/">Docs</a></li>
+            </ul>
+            <a href="https://github.com/levkropp/flexers" class="github-btn">
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+                </svg>
+                GitHub
+            </a>
+        </div>
+    </nav>
+
+    <section class="hero">
+        <div class="badge">
+            <span class="pulse-dot"></span>
+            ESP32 Emulator • Rust
+        </div>
+        <h1>Flexers</h1>
+        <p class="subtitle">High-performance Xtensa CPU emulator for ESP32, written in pure Rust. Native integration, memory safety, and zero FFI overhead.</p>
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-value">~2.4K</div>
+                <div class="stat-label">Lines of Rust</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">30+</div>
+                <div class="stat-label">Instructions</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">0</div>
+                <div class="stat-label">Dependencies</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">78%</div>
+                <div class="stat-label">Tests Passing</div>
+            </div>
+        </div>
+        <div class="cta-buttons">
+            <a href="https://github.com/levkropp/flexers" class="btn btn-primary">View on GitHub</a>
+            <a href="/flexers/docs/" class="btn btn-secondary">Read the Docs</a>
+            <a href="/flexers/blog/2026/03/20/phase-1-complete/" class="btn btn-tertiary">📝 Read the Launch Post</a>
+        </div>
+    </section>
+
+    <section class="section" id="features">
+        <div class="section-label">Why Flexers?</div>
+        <h2>Built for the Modern Rust Ecosystem</h2>
+
+        <div class="cards">
+            <div class="card">
+                <div class="card-icon">⚡</div>
+                <h3>Zero FFI Overhead</h3>
+                <p>Pure Rust implementation eliminates FFI marshalling costs. Direct memory access and native function calls.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🛡️</div>
+                <h3>Memory Safe</h3>
+                <p>No null pointers, no use-after-free, no data races. Rust's ownership system prevents entire classes of bugs.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🔧</div>
+                <h3>Easy Integration</h3>
+                <p>Standard Cargo crate. No manual bindings, no build scripts for C compilation, no platform-specific hacks.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🐛</div>
+                <h3>Better Debugging</h3>
+                <p>Full backtraces, thread-safe by design, clear error types. No pointer aliasing mysteries.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">📦</div>
+                <h3>Modular Design</h3>
+                <p>Clean separation: flexers-core (CPU), flexers-periph (I/O), flexers-stubs (ROM), flexers-session (API).</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">⚙️</div>
+                <h3>Performance First</h3>
+                <p>Page-table memory lookup, inline fast paths, cache-aligned CPU state, compiler jump table dispatch.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="section" id="architecture">
+        <div class="section-label">Technical Deep Dive</div>
+        <h2>Architecture Overview</h2>
+
+        <div class="arch-diagram">
+            <div class="arch-layer">
+                <h3>Application Layer</h3>
+                <div class="arch-boxes">
+                    <div class="arch-box">Cyders (GUI)</div>
+                    <div class="arch-box">Custom Apps</div>
+                    <div class="arch-box">Test Harness</div>
+                </div>
+            </div>
+            <div class="arch-arrow">↓</div>
+            <div class="arch-layer">
+                <h3>Session API</h3>
+                <div class="arch-boxes">
+                    <div class="arch-box">flexers-session</div>
+                </div>
+            </div>
+            <div class="arch-arrow">↓</div>
+            <div class="arch-layer">
+                <h3>Emulator Core</h3>
+                <div class="arch-boxes">
+                    <div class="arch-box gold">flexers-core<br><small>CPU • Memory • Decode</small></div>
+                    <div class="arch-box">flexers-periph<br><small>UART • Timers • GPIO</small></div>
+                    <div class="arch-box">flexers-stubs<br><small>ROM • Display</small></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="code-block">
+            <div class="code-header">flexers-core architecture</div>
+            <code><span class="comment">// CPU State (cache-aligned)</span>
+<span class="keyword">pub struct</span> <span class="type">XtensaCpu</span> {
+    ar: [<span class="type">u32</span>; <span class="number">64</span>],        <span class="comment">// Windowed registers</span>
+    pc: <span class="type">u32</span>,
+    mem: <span class="type">Arc&lt;Memory&gt;</span>,   <span class="comment">// Page-table memory</span>
+    <span class="comment">// ... special registers, cycle count</span>
+}
+
+<span class="comment">// Fast-path memory (4KB pages, O(1) lookup)</span>
+<span class="keyword">impl</span> <span class="type">Memory</span> {
+    <span class="keyword">pub fn</span> <span class="function">read_u32</span>(&<span class="keyword">self</span>, addr: <span class="type">u32</span>) -&gt; <span class="type">u32</span> {
+        <span class="comment">// Direct page table lookup, no bounds checks</span>
+    }
+}
+
+<span class="comment">// Instruction dispatch (compiler jump tables)</span>
+<span class="keyword">match</span> insn.word & <span class="number">0xF</span> {
+    <span class="number">0</span> =&gt; alu::exec_rrr(cpu, insn),
+    <span class="number">1</span> =&gt; load_store::exec_l32r(cpu, insn),
+    <span class="comment">// ... 30+ instruction handlers</span>
+}</code>
+        </div>
+    </section>
+
+    <section class="section" id="roadmap">
+        <div class="section-label">Development Timeline</div>
+        <h2>9-Week Roadmap to LVGL Demo</h2>
+
+        <div class="timeline">
+            <div class="timeline-item completed">
+                <div class="timeline-marker"></div>
+                <div class="timeline-content">
+                    <h3>Phase 1: Core CPU & Memory <span class="phase-status">✓ 85% Complete</span></h3>
+                    <p>Weeks 1-3 • Xtensa CPU, memory subsystem, 30+ instructions, execution loop</p>
+                    <ul>
+                        <li>✓ XtensaCpu with windowed registers</li>
+                        <li>✓ Page-table memory (520KB SRAM, 448KB ROM, 4MB flash)</li>
+                        <li>✓ Instruction fetch/decode (16-bit/24-bit)</li>
+                        <li>✓ ALU, load/store, branches, calls, special registers</li>
+                        <li>⏳ Binary loader (ESP32 format)</li>
+                        <li>⏳ Integration tests</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="timeline-item">
+                <div class="timeline-marker"></div>
+                <div class="timeline-content">
+                    <h3>Phase 2: Peripherals & I/O</h3>
+                    <p>Weeks 4-5 • UART, timers, interrupts for firmware boot</p>
+                    <ul>
+                        <li>MMIO handler dispatcher</li>
+                        <li>UART0/1/2 with callbacks</li>
+                        <li>CCOUNT/CCOMPARE timer</li>
+                        <li>Interrupt delivery (INTENABLE, PS masking)</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="timeline-item">
+                <div class="timeline-marker"></div>
+                <div class="timeline-content">
+                    <h3>Phase 3: ROM Stubs & Symbols</h3>
+                    <p>Weeks 6-7 • Fast ROM function interception</p>
+                    <ul>
+                        <li>PC hook bitmap (512K bits, O(1) lookup)</li>
+                        <li>Direct dispatch table (64K entries)</li>
+                        <li>Core stubs: ets_printf, memcpy, strcmp</li>
+                        <li>ELF symbol loading (goblin crate)</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="timeline-item">
+                <div class="timeline-marker"></div>
+                <div class="timeline-content">
+                    <h3>Phase 4: Display Integration</h3>
+                    <p>Week 8 • TFT_eSPI/LVGL framebuffer rendering</p>
+                    <ul>
+                        <li>TFT_eSPI::pushColors hook</li>
+                        <li>Framebuffer manager (RGB565)</li>
+                        <li>Touch input simulation</li>
+                        <li>LVGL demo validation</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="timeline-item">
+                <div class="timeline-marker"></div>
+                <div class="timeline-content">
+                    <h3>Phase 5: Cyders Integration</h3>
+                    <p>Week 9 • Drop-in replacement for C flexe</p>
+                    <ul>
+                        <li>Session API matching FlexeSession</li>
+                        <li>Remove FFI dependencies</li>
+                        <li>Performance benchmarking</li>
+                        <li>Full LVGL demo support</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="timeline-item future">
+                <div class="timeline-marker"></div>
+                <div class="timeline-content">
+                    <h3>Phase 6: JIT Compilation</h3>
+                    <p>Future • If benchmarking reveals performance gaps</p>
+                    <ul>
+                        <li>Basic block compilation</li>
+                        <li>Register allocation</li>
+                        <li>Hot path detection</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="section">
+        <div class="section-label">Performance</div>
+        <h2>Design Optimizations</h2>
+
+        <table class="perf-table">
+            <thead>
+                <tr>
+                    <th>Component</th>
+                    <th>Optimization</th>
+                    <th>Impact</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Memory Access</td>
+                    <td>Page table + inline fast path</td>
+                    <td>O(1) lookup, no bounds checks</td>
+                </tr>
+                <tr>
+                    <td>CPU State</td>
+                    <td>64-byte cache alignment</td>
+                    <td>Hot registers in single cache line</td>
+                </tr>
+                <tr>
+                    <td>Dispatch</td>
+                    <td>Nested match statements</td>
+                    <td>Compiler jump tables (vs function pointers)</td>
+                </tr>
+                <tr>
+                    <td>Integration</td>
+                    <td>Zero FFI overhead</td>
+                    <td>Direct Rust function calls</td>
+                </tr>
+                <tr>
+                    <td>Memory Model</td>
+                    <td>UnsafeCell for Arc&lt;Memory&gt;</td>
+                    <td>No RefCell runtime overhead</td>
+                </tr>
+            </tbody>
+        </table>
+    </section>
+
+    <section class="section cta-section">
+        <h2>Ready to Explore?</h2>
+        <p>Flexers is under active development. Check out the code, read the docs, or follow along with the blog.</p>
+        <div class="cta-buttons">
+            <a href="https://github.com/levkropp/flexers" class="btn btn-primary">Star on GitHub</a>
+            <a href="/flexers/blog/2026/03/20/phase-1-complete/" class="btn btn-secondary">Read the Launch Post</a>
+        </div>
+    </section>
+
+    <footer>
+        <div class="footer-content">
+            <p>Built with Rust 🦀 • Licensed under MIT or Apache-2.0</p>
+            <div class="footer-links">
+                <a href="https://github.com/levkropp/flexers">GitHub</a>
+                <a href="/flexers/docs/">Documentation</a>
+                <a href="/flexers/blog/">Blog</a>
+            </div>
+        </div>
+    </footer>
+
+    <script src="assets/js/circuit.js"></script>
+</body>
+</html>

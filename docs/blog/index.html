@@ -1,0 +1,139 @@
+---
+layout: default
+title: Blog
+---
+
+<section class="blog-index">
+    <div class="blog-header">
+        <h1>Blog</h1>
+        <p class="blog-subtitle">Development updates, technical deep dives, and architecture notes</p>
+    </div>
+
+    <div class="posts-grid">
+        {% for post in site.posts %}
+        <article class="post-card">
+            <div class="post-card-meta">
+                <span class="post-date">{{ post.date | date: "%B %d, %Y" }}</span>
+                {% if post.categories %}
+                <div class="post-categories">
+                    {% for category in post.categories %}
+                    <span class="category-tag">{{ category }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            <h2><a href="{{ post.url | relative_url }}">{{ post.title }}</a></h2>
+            {% if post.excerpt %}
+            <p class="post-excerpt">{{ post.excerpt }}</p>
+            {% endif %}
+            <a href="{{ post.url | relative_url }}" class="read-more">Read more →</a>
+        </article>
+        {% endfor %}
+    </div>
+</section>
+
+<style>
+.blog-index {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 5rem 2rem;
+}
+
+.blog-header {
+    text-align: center;
+    margin-bottom: 4rem;
+}
+
+.blog-header h1 {
+    font-size: 3rem;
+    background: linear-gradient(135deg, var(--accent-blue-bright), var(--accent-gold-bright));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 1rem;
+}
+
+.blog-subtitle {
+    color: var(--text-muted);
+    font-size: 1.1rem;
+}
+
+.posts-grid {
+    display: grid;
+    gap: 2rem;
+}
+
+.post-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 2rem;
+    transition: all 0.3s;
+}
+
+.post-card:hover {
+    border-color: var(--accent-blue);
+    transform: translateY(-4px);
+    box-shadow: 0 8px 30px var(--accent-blue-glow);
+}
+
+.post-card-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+}
+
+.post-date {
+    color: var(--text-muted);
+}
+
+.post-categories {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.category-tag {
+    background: var(--accent-blue-glow);
+    border: 1px solid var(--accent-blue);
+    color: var(--accent-blue);
+    padding: 0.2rem 0.6rem;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+}
+
+.post-card h2 {
+    font-size: 1.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.post-card h2 a {
+    color: var(--text-primary);
+    text-decoration: none;
+    transition: color 0.2s;
+}
+
+.post-card h2 a:hover {
+    color: var(--accent-blue);
+}
+
+.post-card .post-excerpt {
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+    line-height: 1.7;
+}
+
+.read-more {
+    color: var(--accent-blue);
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.2s;
+}
+
+.read-more:hover {
+    color: var(--accent-blue-bright);
+}
+</style>
