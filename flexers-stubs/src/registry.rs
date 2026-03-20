@@ -134,6 +134,7 @@ pub fn create_esp32_dispatcher() -> RomStubDispatcher {
     dispatcher.register(Close);
     dispatcher.register(SetSockOpt);
     dispatcher.register(GetSockOpt);
+    dispatcher.register(Select);
     dispatcher.register(Getaddrinfo);
     dispatcher.register(Freeaddrinfo);
 

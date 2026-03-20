@@ -3,12 +3,13 @@
 /// These provide real socket API implementation by bridging to host OS sockets.
 
 use crate::handler::RomStubHandler;
-use crate::functions::socket_manager::{SocketManager, SocketType, SOCKET_MANAGER};
+use crate::functions::socket_manager::{AddressFamily, SocketManager, SocketType, SOCKET_MANAGER};
 use flexers_core::cpu::XtensaCpu;
 use std::net::{SocketAddr, ToSocketAddrs};
 
 /// Socket constants
 const AF_INET: u32 = 2;
+const AF_INET6: u32 = 10;
 const SOCK_STREAM: u32 = 1;
 const SOCK_DGRAM: u32 = 2;
 
@@ -37,36 +38,52 @@ fn read_string_from_memory(cpu: &XtensaCpu, ptr: u32, max_len: usize) -> String 
     String::from_utf8_lossy(&bytes).to_string()
 }
 
-/// Helper function to parse sockaddr_in from memory
+/// Helper function to parse sockaddr_in or sockaddr_in6 from memory
 fn parse_sockaddr(cpu: &XtensaCpu, addr_ptr: u32) -> Option<SocketAddr> {
     if addr_ptr == 0 {
         return None;
     }
 
     let family = cpu.memory().read_u16(addr_ptr);
-    if family != AF_INET as u16 {
-        return None;
+
+    match family as u32 {
+        AF_INET => {
+            // IPv4: struct sockaddr_in
+            let port = cpu.memory().read_u16(addr_ptr + 2);
+            let port = u16::from_be(port); // Network byte order
+
+            let ip = cpu.memory().read_u32(addr_ptr + 4);
+            // IP is in network byte order (big-endian)
+            let addr = SocketAddr::from((
+                [
+                    ((ip >> 24) & 0xFF) as u8,
+                    ((ip >> 16) & 0xFF) as u8,
+                    ((ip >> 8) & 0xFF) as u8,
+                    (ip & 0xFF) as u8,
+                ],
+                port,
+            ));
+            Some(addr)
+        }
+        AF_INET6 => {
+            // IPv6: struct sockaddr_in6
+            let port = cpu.memory().read_u16(addr_ptr + 2);
+            let port = u16::from_be(port); // Network byte order
+
+            // Skip flowinfo (4 bytes) at offset 4
+            // Read 128-bit IPv6 address at offset 8
+            let mut ipv6_bytes = [0u8; 16];
+            for i in 0..16 {
+                ipv6_bytes[i] = cpu.memory().read_u8(addr_ptr + 8 + i as u32);
+            }
+
+            Some(SocketAddr::from((ipv6_bytes, port)))
+        }
+        _ => None,
     }
-
-    let port = cpu.memory().read_u16(addr_ptr + 2);
-    let port = u16::from_be(port); // Network byte order
-
-    let ip = cpu.memory().read_u32(addr_ptr + 4);
-    // IP is in network byte order (big-endian)
-    let addr = SocketAddr::from((
-        [
-            ((ip >> 24) & 0xFF) as u8,
-            ((ip >> 16) & 0xFF) as u8,
-            ((ip >> 8) & 0xFF) as u8,
-            (ip & 0xFF) as u8,
-        ],
-        port,
-    ));
-
-    Some(addr)
 }
 
-/// Helper function to write sockaddr_in to memory
+/// Helper function to write sockaddr_in or sockaddr_in6 to memory
 fn write_sockaddr(cpu: &mut XtensaCpu, addr_ptr: u32, addr: SocketAddr) {
     if addr_ptr == 0 {
         return;
@@ -79,7 +96,16 @@ fn write_sockaddr(cpu: &mut XtensaCpu, addr_ptr: u32, addr: SocketAddr) {
             let ip = u32::from(*addr_v4.ip());
             cpu.memory().write_u32(addr_ptr + 4, ip);
         }
-        _ => {} // Only support IPv4
+        SocketAddr::V6(addr_v6) => {
+            cpu.memory().write_u16(addr_ptr, AF_INET6 as u16);
+            cpu.memory().write_u16(addr_ptr + 2, addr_v6.port().to_be());
+            cpu.memory().write_u32(addr_ptr + 4, 0); // flowinfo
+            let ip = addr_v6.ip().octets();
+            for i in 0..16 {
+                cpu.memory().write_u8(addr_ptr + 8 + i as u32, ip[i]);
+            }
+            cpu.memory().write_u32(addr_ptr + 24, 0); // scope_id
+        }
     }
 }
 
@@ -94,9 +120,11 @@ impl RomStubHandler for Socket {
         let sock_type = cpu.get_ar(3);
         let _protocol = cpu.get_ar(4);
 
-        if domain != AF_INET {
-            return u32::MAX; // -1 (error)
-        }
+        let address_family = match domain {
+            AF_INET => AddressFamily::IPv4,
+            AF_INET6 => AddressFamily::IPv6,
+            _ => return u32::MAX, // -1 (error)
+        };
 
         let socket_type = match sock_type {
             SOCK_STREAM => SocketType::TcpStream,
@@ -105,7 +133,7 @@ impl RomStubHandler for Socket {
         };
 
         lock_manager!()
-            .create_socket(socket_type)
+            .create_socket(socket_type, address_family)
     }
 
     fn name(&self) -> &str {
@@ -421,9 +449,29 @@ impl RomStubHandler for Close {
 pub struct SetSockOpt;
 
 impl RomStubHandler for SetSockOpt {
-    fn call(&self, _cpu: &mut XtensaCpu) -> u32 {
-        // Return success
-        0
+    fn call(&self, cpu: &mut XtensaCpu) -> u32 {
+        let sockfd = cpu.get_ar(2);
+        let level = cpu.get_ar(3) as i32;
+        let optname = cpu.get_ar(4) as i32;
+        let optval_ptr = cpu.get_ar(5);
+        let optlen = cpu.get_ar(6) as usize;
+
+        // Read option value from memory
+        let mut optval = vec![0u8; optlen];
+        for i in 0..optlen {
+            optval[i] = cpu.memory().read_u8(optval_ptr + i as u32);
+        }
+
+        // Set option
+        let result = lock_manager!()
+            .get_mut(sockfd)
+            .and_then(|socket| socket.set_option(level, optname, &optval).ok());
+
+        if result.is_some() {
+            0
+        } else {
+            u32::MAX
+        }
     }
 
     fn name(&self) -> &str {
@@ -437,13 +485,122 @@ impl RomStubHandler for SetSockOpt {
 pub struct GetSockOpt;
 
 impl RomStubHandler for GetSockOpt {
-    fn call(&self, _cpu: &mut XtensaCpu) -> u32 {
-        // Return success
+    fn call(&self, cpu: &mut XtensaCpu) -> u32 {
+        let sockfd = cpu.get_ar(2);
+        let level = cpu.get_ar(3) as i32;
+        let optname = cpu.get_ar(4) as i32;
+        let optval_ptr = cpu.get_ar(5);
+        let optlen_ptr = cpu.get_ar(6);
+
+        // Get option value
+        let optval = if let Some(socket) = lock_manager!().get(sockfd) {
+            socket.get_option(level, optname)
+        } else {
+            return u32::MAX;
+        };
+
+        // Write option value to memory
+        let bytes_to_write = if optlen_ptr != 0 {
+            let max_len = cpu.memory().read_u32(optlen_ptr) as usize;
+            optval.len().min(max_len)
+        } else {
+            optval.len()
+        };
+
+        for i in 0..bytes_to_write {
+            cpu.memory().write_u8(optval_ptr + i as u32, optval[i]);
+        }
+
+        // Update optlen
+        if optlen_ptr != 0 {
+            cpu.memory().write_u32(optlen_ptr, optval.len() as u32);
+        }
+
         0
     }
 
     fn name(&self) -> &str {
         "getsockopt"
+    }
+}
+
+/// select() - Monitor multiple sockets for I/O readiness
+///
+/// int select(int nfds, fd_set *readfds, fd_set *writefds,
+///            fd_set *exceptfds, struct timeval *timeout);
+pub struct Select;
+
+impl RomStubHandler for Select {
+    fn call(&self, cpu: &mut XtensaCpu) -> u32 {
+        let nfds = cpu.get_ar(2);
+        let readfds_ptr = cpu.get_ar(3);
+        let writefds_ptr = cpu.get_ar(4);
+        let exceptfds_ptr = cpu.get_ar(5);
+        let timeout_ptr = cpu.get_ar(6);
+
+        // Read timeout if provided
+        let _timeout_ms = if timeout_ptr != 0 {
+            let tv_sec = cpu.memory().read_u32(timeout_ptr);
+            let tv_usec = cpu.memory().read_u32(timeout_ptr + 4);
+            Some((tv_sec * 1000 + tv_usec / 1000) as u64)
+        } else {
+            None
+        };
+
+        let mut total_ready = 0u32;
+        let manager = lock_manager!();
+
+        // Process read fds
+        if readfds_ptr != 0 {
+            for fd in 0..nfds {
+                let byte_idx = (fd / 8) as u32;
+                let bit_idx = fd % 8;
+                let byte = cpu.memory().read_u8(readfds_ptr + byte_idx);
+
+                if (byte & (1 << bit_idx)) != 0 {
+                    // Socket is in readfds, check if ready
+                    if manager.is_ready_read(fd) {
+                        total_ready += 1;
+                    } else {
+                        // Clear bit if not ready
+                        let new_byte = byte & !(1 << bit_idx);
+                        cpu.memory().write_u8(readfds_ptr + byte_idx, new_byte);
+                    }
+                }
+            }
+        }
+
+        // Process write fds
+        if writefds_ptr != 0 {
+            for fd in 0..nfds {
+                let byte_idx = (fd / 8) as u32;
+                let bit_idx = fd % 8;
+                let byte = cpu.memory().read_u8(writefds_ptr + byte_idx);
+
+                if (byte & (1 << bit_idx)) != 0 {
+                    if manager.is_ready_write(fd) {
+                        total_ready += 1;
+                    } else {
+                        let new_byte = byte & !(1 << bit_idx);
+                        cpu.memory().write_u8(writefds_ptr + byte_idx, new_byte);
+                    }
+                }
+            }
+        }
+
+        // Clear exceptfds (not supported)
+        if exceptfds_ptr != 0 {
+            for i in 0..((nfds + 7) / 8) {
+                cpu.memory().write_u8(exceptfds_ptr + i, 0);
+            }
+        }
+
+        // Return number of ready sockets
+        total_ready
+    }
+
+    fn name(&self) -> &str {
+        "select"
     }
 }
 

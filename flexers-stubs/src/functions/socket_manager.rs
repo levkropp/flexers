@@ -12,6 +12,13 @@ use lazy_static::lazy_static;
 
 pub type SocketFd = u32;
 
+/// Address family
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum AddressFamily {
+    IPv4,
+    IPv6,
+}
+
 /// Socket type
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SocketType {
@@ -28,6 +35,9 @@ pub struct SocketState {
     /// Socket type (can be upgraded from TcpStream to TcpListener on bind)
     socket_type: SocketType,
 
+    /// Address family
+    address_family: AddressFamily,
+
     /// TCP stream (if connected)
     tcp_stream: Option<TcpStream>,
 
@@ -42,42 +52,67 @@ pub struct SocketState {
 
     /// Bound address (for UDP sockets)
     bound_addr: Option<SocketAddr>,
+
+    /// Socket options
+    reuse_addr: bool,
+    tcp_nodelay: bool,
+    recv_buffer_size: usize,
+    send_buffer_size: usize,
+    recv_timeout_ms: Option<u64>,
 }
 
 impl SocketState {
-    pub fn new_tcp_stream(fd: SocketFd) -> Self {
+    pub fn new_tcp_stream(fd: SocketFd, family: AddressFamily) -> Self {
         Self {
             fd,
             socket_type: SocketType::TcpStream,
+            address_family: family,
             tcp_stream: None,
             tcp_listener: None,
             udp_socket: None,
             connected: false,
             bound_addr: None,
+            reuse_addr: false,
+            tcp_nodelay: false,
+            recv_buffer_size: 8192,
+            send_buffer_size: 8192,
+            recv_timeout_ms: None,
         }
     }
 
-    pub fn new_tcp_listener(fd: SocketFd) -> Self {
+    pub fn new_tcp_listener(fd: SocketFd, family: AddressFamily) -> Self {
         Self {
             fd,
             socket_type: SocketType::TcpListener,
+            address_family: family,
             tcp_stream: None,
             tcp_listener: None,
             udp_socket: None,
             connected: false,
             bound_addr: None,
+            reuse_addr: false,
+            tcp_nodelay: false,
+            recv_buffer_size: 8192,
+            send_buffer_size: 8192,
+            recv_timeout_ms: None,
         }
     }
 
-    pub fn new_udp(fd: SocketFd) -> Self {
+    pub fn new_udp(fd: SocketFd, family: AddressFamily) -> Self {
         Self {
             fd,
             socket_type: SocketType::Udp,
+            address_family: family,
             tcp_stream: None,
             tcp_listener: None,
             udp_socket: None,
             connected: false,
             bound_addr: None,
+            reuse_addr: false,
+            tcp_nodelay: false,
+            recv_buffer_size: 8192,
+            send_buffer_size: 8192,
+            recv_timeout_ms: None,
         }
     }
 
@@ -259,6 +294,140 @@ impl SocketState {
     pub fn tcp_listener(&self) -> Option<&TcpListener> {
         self.tcp_listener.as_ref()
     }
+
+    /// Set socket option
+    pub fn set_option(&mut self, level: i32, optname: i32, optval: &[u8]) -> std::io::Result<()> {
+        const SOL_SOCKET: i32 = 1;
+        const IPPROTO_TCP: i32 = 6;
+        const SO_REUSEADDR: i32 = 2;
+        const SO_RCVBUF: i32 = 8;
+        const SO_SNDBUF: i32 = 7;
+        const SO_RCVTIMEO: i32 = 20;
+        const TCP_NODELAY: i32 = 1;
+
+        match (level, optname) {
+            (SOL_SOCKET, SO_REUSEADDR) => {
+                self.reuse_addr = if optval.is_empty() { false } else { optval[0] != 0 };
+                // Apply to underlying listener if exists
+                if let Some(ref listener) = self.tcp_listener {
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::io::AsRawFd;
+                        let fd = listener.as_raw_fd();
+                        unsafe {
+                            let optval: i32 = if self.reuse_addr { 1 } else { 0 };
+                            libc::setsockopt(
+                                fd,
+                                libc::SOL_SOCKET,
+                                libc::SO_REUSEADDR,
+                                &optval as *const _ as *const libc::c_void,
+                                std::mem::size_of::<i32>() as libc::socklen_t,
+                            );
+                        }
+                    }
+                    #[cfg(windows)]
+                    {
+                        // Windows requires different handling - reuse_addr is set before bind
+                        // For now, just track the setting
+                    }
+                }
+                Ok(())
+            }
+            (SOL_SOCKET, SO_RCVBUF) => {
+                if optval.len() >= 4 {
+                    self.recv_buffer_size = u32::from_le_bytes([
+                        optval[0], optval[1], optval[2], optval[3]
+                    ]) as usize;
+                }
+                Ok(())
+            }
+            (SOL_SOCKET, SO_SNDBUF) => {
+                if optval.len() >= 4 {
+                    self.send_buffer_size = u32::from_le_bytes([
+                        optval[0], optval[1], optval[2], optval[3]
+                    ]) as usize;
+                }
+                Ok(())
+            }
+            (SOL_SOCKET, SO_RCVTIMEO) => {
+                if optval.len() >= 8 {
+                    let tv_sec = u32::from_le_bytes([
+                        optval[0], optval[1], optval[2], optval[3]
+                    ]);
+                    let tv_usec = u32::from_le_bytes([
+                        optval[4], optval[5], optval[6], optval[7]
+                    ]);
+                    let timeout_ms = (tv_sec as u64 * 1000) + (tv_usec as u64 / 1000);
+                    self.recv_timeout_ms = if timeout_ms > 0 { Some(timeout_ms) } else { None };
+
+                    // Apply timeout to underlying socket
+                    if let Some(ref stream) = self.tcp_stream {
+                        let duration = if let Some(ms) = self.recv_timeout_ms {
+                            Some(std::time::Duration::from_millis(ms))
+                        } else {
+                            None
+                        };
+                        stream.set_read_timeout(duration)?;
+                    }
+                    if let Some(ref socket) = self.udp_socket {
+                        let duration = if let Some(ms) = self.recv_timeout_ms {
+                            Some(std::time::Duration::from_millis(ms))
+                        } else {
+                            None
+                        };
+                        socket.set_read_timeout(duration)?;
+                    }
+                }
+                Ok(())
+            }
+            (IPPROTO_TCP, TCP_NODELAY) => {
+                self.tcp_nodelay = if optval.is_empty() { false } else { optval[0] != 0 };
+                if let Some(ref stream) = self.tcp_stream {
+                    stream.set_nodelay(self.tcp_nodelay)?;
+                }
+                Ok(())
+            }
+            _ => Ok(()), // Ignore unknown options
+        }
+    }
+
+    /// Get socket option
+    pub fn get_option(&self, level: i32, optname: i32) -> Vec<u8> {
+        const SOL_SOCKET: i32 = 1;
+        const IPPROTO_TCP: i32 = 6;
+        const SO_REUSEADDR: i32 = 2;
+        const SO_RCVBUF: i32 = 8;
+        const SO_SNDBUF: i32 = 7;
+        const SO_RCVTIMEO: i32 = 20;
+        const TCP_NODELAY: i32 = 1;
+
+        match (level, optname) {
+            (SOL_SOCKET, SO_REUSEADDR) => {
+                vec![if self.reuse_addr { 1 } else { 0 }, 0, 0, 0]
+            }
+            (SOL_SOCKET, SO_RCVBUF) => {
+                (self.recv_buffer_size as u32).to_le_bytes().to_vec()
+            }
+            (SOL_SOCKET, SO_SNDBUF) => {
+                (self.send_buffer_size as u32).to_le_bytes().to_vec()
+            }
+            (SOL_SOCKET, SO_RCVTIMEO) => {
+                let (tv_sec, tv_usec) = if let Some(ms) = self.recv_timeout_ms {
+                    ((ms / 1000) as u32, ((ms % 1000) * 1000) as u32)
+                } else {
+                    (0, 0)
+                };
+                let mut result = Vec::new();
+                result.extend_from_slice(&tv_sec.to_le_bytes());
+                result.extend_from_slice(&tv_usec.to_le_bytes());
+                result
+            }
+            (IPPROTO_TCP, TCP_NODELAY) => {
+                vec![if self.tcp_nodelay { 1 } else { 0 }, 0, 0, 0]
+            }
+            _ => vec![0u8; 4], // Unknown option
+        }
+    }
 }
 
 /// Socket manager
@@ -279,14 +448,14 @@ impl SocketManager {
     }
 
     /// Create new socket
-    pub fn create_socket(&mut self, socket_type: SocketType) -> SocketFd {
+    pub fn create_socket(&mut self, socket_type: SocketType, family: AddressFamily) -> SocketFd {
         let fd = self.next_fd;
         self.next_fd += 1;
 
         let state = match socket_type {
-            SocketType::TcpStream => SocketState::new_tcp_stream(fd),
-            SocketType::TcpListener => SocketState::new_tcp_listener(fd),
-            SocketType::Udp => SocketState::new_udp(fd),
+            SocketType::TcpStream => SocketState::new_tcp_stream(fd, family),
+            SocketType::TcpListener => SocketState::new_tcp_listener(fd, family),
+            SocketType::Udp => SocketState::new_udp(fd, family),
         };
 
         self.sockets.insert(fd, state);
@@ -311,8 +480,9 @@ impl SocketManager {
     /// Accept connection and create new socket for client
     pub fn accept(&mut self, listener_fd: SocketFd) -> std::io::Result<(SocketFd, SocketAddr)> {
         // Accept connection on listener socket
-        let (stream, addr) = if let Some(listener) = self.sockets.get_mut(&listener_fd) {
-            listener.accept()?
+        let (stream, addr, family) = if let Some(listener) = self.sockets.get_mut(&listener_fd) {
+            let (s, a) = listener.accept()?;
+            (s, a, listener.address_family)
         } else {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -324,13 +494,65 @@ impl SocketManager {
         let client_fd = self.next_fd;
         self.next_fd += 1;
 
-        let mut client_state = SocketState::new_tcp_stream(client_fd);
+        let mut client_state = SocketState::new_tcp_stream(client_fd, family);
         client_state.tcp_stream = Some(stream);
         client_state.connected = true;
 
         self.sockets.insert(client_fd, client_state);
 
         Ok((client_fd, addr))
+    }
+
+    /// Check if socket is ready for reading (has data or can accept)
+    pub fn is_ready_read(&self, fd: SocketFd) -> bool {
+        if let Some(socket) = self.sockets.get(&fd) {
+            match socket.socket_type {
+                SocketType::TcpStream => {
+                    // Try non-blocking peek of 1 byte
+                    if let Some(ref stream) = socket.tcp_stream {
+                        let mut buf = [0u8; 1];
+                        match stream.peek(&mut buf) {
+                            Ok(n) => n > 0,
+                            Err(_) => false,
+                        }
+                    } else {
+                        false
+                    }
+                }
+                SocketType::TcpListener => {
+                    // For listener, we need to check if accept would succeed
+                    // This is a bit tricky - we can't peek at accept
+                    // We'll use a non-blocking accept and if it succeeds,
+                    // we need to store the connection for the actual accept call
+                    // For now, return false to avoid complexity
+                    // A better implementation would track pending connections
+                    false
+                }
+                SocketType::Udp => {
+                    // Try non-blocking peek
+                    if let Some(ref socket) = socket.udp_socket {
+                        let mut buf = [0u8; 1];
+                        match socket.peek(&mut buf) {
+                            Ok(n) => n > 0,
+                            Err(_) => false,
+                        }
+                    } else {
+                        false
+                    }
+                }
+            }
+        } else {
+            false
+        }
+    }
+
+    /// Check if socket is ready for writing
+    pub fn is_ready_write(&self, fd: SocketFd) -> bool {
+        if let Some(socket) = self.sockets.get(&fd) {
+            socket.is_connected() || socket.socket_type == SocketType::Udp
+        } else {
+            false
+        }
     }
 }
 
@@ -360,8 +582,8 @@ mod tests {
     #[test]
     fn test_socket_manager_creation() {
         let mut manager = SocketManager::new();
-        let fd1 = manager.create_socket(SocketType::TcpStream);
-        let fd2 = manager.create_socket(SocketType::Udp);
+        let fd1 = manager.create_socket(SocketType::TcpStream, AddressFamily::IPv4);
+        let fd2 = manager.create_socket(SocketType::Udp, AddressFamily::IPv4);
 
         assert_eq!(fd1, 3);
         assert_eq!(fd2, 4);
@@ -372,8 +594,8 @@ mod tests {
     #[test]
     fn test_socket_type_tracking() {
         let mut manager = SocketManager::new();
-        let tcp_fd = manager.create_socket(SocketType::TcpStream);
-        let udp_fd = manager.create_socket(SocketType::Udp);
+        let tcp_fd = manager.create_socket(SocketType::TcpStream, AddressFamily::IPv4);
+        let udp_fd = manager.create_socket(SocketType::Udp, AddressFamily::IPv4);
 
         assert_eq!(manager.get(tcp_fd).unwrap().socket_type(), SocketType::TcpStream);
         assert_eq!(manager.get(udp_fd).unwrap().socket_type(), SocketType::Udp);
@@ -382,7 +604,7 @@ mod tests {
     #[test]
     fn test_socket_close() {
         let mut manager = SocketManager::new();
-        let fd = manager.create_socket(SocketType::TcpStream);
+        let fd = manager.create_socket(SocketType::TcpStream, AddressFamily::IPv4);
 
         assert!(manager.get(fd).is_some());
         manager.close(fd);
@@ -392,7 +614,7 @@ mod tests {
     #[test]
     fn test_tcp_loopback_connection() {
         // Start a listener on loopback
-        let mut listener_socket = SocketState::new_tcp_listener(100);
+        let mut listener_socket = SocketState::new_tcp_listener(100, AddressFamily::IPv4);
         let bind_result = listener_socket.bind(SocketAddr::from(([127, 0, 0, 1], 0)));
         assert!(bind_result.is_ok());
 
@@ -403,7 +625,7 @@ mod tests {
         let listener_addr = listener_socket.tcp_listener.as_ref().unwrap().local_addr().unwrap();
 
         // Connect to it
-        let mut client_socket = SocketState::new_tcp_stream(101);
+        let mut client_socket = SocketState::new_tcp_stream(101, AddressFamily::IPv4);
         let connect_result = client_socket.connect(listener_addr);
         assert!(connect_result.is_ok());
         assert!(client_socket.is_connected());
@@ -411,7 +633,7 @@ mod tests {
 
     #[test]
     fn test_udp_socket_creation() {
-        let mut socket = SocketState::new_udp(200);
+        let mut socket = SocketState::new_udp(200, AddressFamily::IPv4);
         let bind_result = socket.bind(SocketAddr::from(([127, 0, 0, 1], 0)));
         assert!(bind_result.is_ok());
         assert!(socket.udp_socket.is_some());
@@ -420,13 +642,13 @@ mod tests {
     #[test]
     fn test_nonblocking_recv_returns_zero() {
         // Create a connected TCP socket (to loopback)
-        let mut listener = SocketState::new_tcp_listener(300);
+        let mut listener = SocketState::new_tcp_listener(300, AddressFamily::IPv4);
         listener.bind(SocketAddr::from(([127, 0, 0, 1], 0))).unwrap();
         listener.listen().unwrap();
 
         let listener_addr = listener.tcp_listener.as_ref().unwrap().local_addr().unwrap();
 
-        let mut client = SocketState::new_tcp_stream(301);
+        let mut client = SocketState::new_tcp_stream(301, AddressFamily::IPv4);
         client.connect(listener_addr).unwrap();
 
         // Try to receive when no data is available (non-blocking)
@@ -438,13 +660,13 @@ mod tests {
     #[test]
     fn test_send_recv_loopback() {
         // Set up listener
-        let mut listener = SocketState::new_tcp_listener(400);
+        let mut listener = SocketState::new_tcp_listener(400, AddressFamily::IPv4);
         listener.bind(SocketAddr::from(([127, 0, 0, 1], 0))).unwrap();
         listener.listen().unwrap();
         let listener_addr = listener.tcp_listener.as_ref().unwrap().local_addr().unwrap();
 
         // Connect client
-        let mut client = SocketState::new_tcp_stream(401);
+        let mut client = SocketState::new_tcp_stream(401, AddressFamily::IPv4);
         client.connect(listener_addr).unwrap();
 
         // Accept connection
