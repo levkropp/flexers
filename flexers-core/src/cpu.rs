@@ -1,5 +1,11 @@
 use crate::memory::Memory;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+
+/// Trait for interrupt controller (for dependency injection)
+pub trait InterruptControllerTrait: Send + Sync {
+    fn get_pending_interrupt(&self) -> Option<(u8, u8)>; // (source, level)
+    fn set_current_level(&mut self, level: u8);
+}
 
 /// Xtensa CPU state optimized for cache performance
 /// Layout: HOT (accessed every instruction) → WARM (branches/exceptions) → COLD (large arrays)
@@ -34,6 +40,8 @@ pub struct XtensaCpu {
     cycle_count: u64,
     /// Memory subsystem reference
     mem: Arc<Memory>,
+    /// Interrupt controller reference (optional)
+    interrupt_controller: Option<Arc<Mutex<dyn InterruptControllerTrait>>>,
 
     // ===== WARM SECTION: Accessed on branches/exceptions =====
     /// Vector base address
@@ -89,7 +97,13 @@ impl XtensaCpu {
             spill_state: Box::new(SpillState {
                 windows: Vec::new(),
             }),
+            interrupt_controller: None,
         }
+    }
+
+    /// Set interrupt controller
+    pub fn set_interrupt_controller(&mut self, ic: Arc<Mutex<dyn InterruptControllerTrait>>) {
+        self.interrupt_controller = Some(ic);
     }
 
     /// Get windowed register value
@@ -222,6 +236,63 @@ impl XtensaCpu {
     #[inline(always)]
     pub fn set_intlevel(&mut self, level: u32) {
         self.ps = (self.ps & !0xF) | (level & 0xF);
+    }
+
+    /// Check for pending interrupts
+    pub fn check_pending_interrupt(&self) -> Option<u8> {
+        if let Some(ref ic) = self.interrupt_controller {
+            if let Ok(ic_lock) = ic.lock() {
+                if let Some((_source, level)) = ic_lock.get_pending_interrupt() {
+                    // Check if priority higher than current level
+                    let current_level = self.intlevel() as u8;
+                    if level > current_level {
+                        return Some(level);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Take an interrupt (called when interrupt is pending)
+    pub fn take_interrupt(&mut self, level: u8) {
+        // Save PC and PS to exception registers
+        self.epc[level as usize] = self.pc;
+        self.eps[level as usize] = self.ps;
+
+        // Load exception handler address from vector table
+        // Vector table: VECBASE + level * 4
+        let vec_addr = self.vecbase + (level as u32) * 4;
+        let handler_pc = self.mem.read_u32(vec_addr);
+
+        // Update PS to new interrupt level
+        self.ps = (self.ps & !0xF) | (level as u32);
+
+        // Jump to handler
+        self.pc = handler_pc;
+
+        // Update interrupt controller current level
+        if let Some(ref ic) = self.interrupt_controller {
+            if let Ok(mut ic_lock) = ic.lock() {
+                ic_lock.set_current_level(level);
+            }
+        }
+    }
+
+    /// Return from interrupt (RET instruction should call this)
+    pub fn return_from_interrupt(&mut self) {
+        let level = self.intlevel() as usize;
+
+        // Restore PC and PS
+        self.pc = self.epc[level];
+        self.ps = self.eps[level];
+
+        // Update interrupt controller level
+        if let Some(ref ic) = self.interrupt_controller {
+            if let Ok(mut ic_lock) = ic.lock() {
+                ic_lock.set_current_level((self.ps & 0xF) as u8);
+            }
+        }
     }
 }
 

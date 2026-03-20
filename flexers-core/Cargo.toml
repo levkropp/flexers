@@ -10,3 +10,4 @@ repository.workspace = true
 # No external dependencies - pure Rust implementation
 
 [dev-dependencies]
+flexers-periph = { path = "../flexers-periph" }

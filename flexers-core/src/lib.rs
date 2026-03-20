@@ -13,6 +13,11 @@ pub fn run_batch(cpu: &mut XtensaCpu, cycles: usize) -> Result<usize, ExecError>
     let mut executed = 0;
 
     while executed < cycles && cpu.is_running() {
+        // Check for pending interrupts BEFORE executing instruction
+        if let Some(int_level) = cpu.check_pending_interrupt() {
+            cpu.take_interrupt(int_level);
+        }
+
         // Fetch instruction
         let insn = fetch(cpu.memory(), cpu.pc())
             .map_err(|_| ExecError::MemoryFault(cpu.pc()))?;

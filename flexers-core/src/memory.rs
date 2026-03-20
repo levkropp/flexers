@@ -1,5 +1,6 @@
 use std::ptr::NonNull;
 use std::cell::UnsafeCell;
+use std::sync::{Arc, Mutex};
 
 /// Page size for memory mapping (4 KB)
 const PAGE_SIZE: usize = 4096;
@@ -39,12 +40,20 @@ pub struct Memory {
     page_table: UnsafeCell<Vec<Option<NonNull<u8>>>>,
     /// MMIO handlers for peripheral regions
     mmio_handlers: UnsafeCell<Vec<Option<Box<dyn MmioHandler>>>>,
+    /// Peripheral bus for MMIO dispatch (optional - None for testing)
+    peripheral_bus: Option<Arc<Mutex<dyn PeripheralBusDispatch>>>,
 }
 
 /// MMIO handler trait for peripheral devices
 pub trait MmioHandler: Send + Sync {
     fn read(&self, addr: u32, size: u8) -> u32;
     fn write(&mut self, addr: u32, size: u8, val: u32);
+}
+
+/// Peripheral bus dispatcher trait (for dependency injection)
+pub trait PeripheralBusDispatch: Send + Sync {
+    fn dispatch_read(&self, addr: u32, size: u8) -> Option<u32>;
+    fn dispatch_write(&mut self, addr: u32, size: u8, val: u32) -> bool;
 }
 
 impl Memory {
@@ -58,6 +67,7 @@ impl Memory {
             rtc_dram: UnsafeCell::new(vec![0u8; RTC_DRAM_SIZE]),
             page_table: UnsafeCell::new(vec![None; PAGE_COUNT]),
             mmio_handlers: UnsafeCell::new(Vec::new()),
+            peripheral_bus: None,
         };
 
         // Map regions
@@ -77,6 +87,11 @@ impl Memory {
         }
 
         mem
+    }
+
+    /// Set peripheral bus for MMIO dispatch
+    pub fn set_peripheral_bus(&mut self, bus: Arc<Mutex<dyn PeripheralBusDispatch>>) {
+        self.peripheral_bus = Some(bus);
     }
 
     /// Map a memory region into the page table (static helper)
@@ -117,7 +132,16 @@ impl Memory {
 
     /// Slow-path read u32 (MMIO or unmapped)
     fn read_u32_slow(&self, addr: u32) -> u32 {
-        // TODO: MMIO handler lookup
+        // Check if peripheral bus is available
+        if let Some(ref bus) = self.peripheral_bus {
+            if let Ok(bus_lock) = bus.lock() {
+                if let Some(val) = bus_lock.dispatch_read(addr, 4) {
+                    return val;
+                }
+            }
+        }
+
+        // Address not mapped to peripheral - return 0
         0
     }
 
@@ -137,8 +161,13 @@ impl Memory {
     }
 
     /// Slow-path write u32 (MMIO or unmapped)
-    fn write_u32_slow(&self, _addr: u32, _val: u32) {
-        // TODO: MMIO handler lookup
+    fn write_u32_slow(&self, addr: u32, val: u32) {
+        if let Some(ref bus) = self.peripheral_bus {
+            if let Ok(mut bus_lock) = bus.lock() {
+                bus_lock.dispatch_write(addr, 4, val);
+            }
+        }
+        // Unmapped writes are silently dropped (real hardware behavior)
     }
 
     /// Read u16
