@@ -147,7 +147,7 @@ mod tests {
 
         // CALL0 +64
         let insn = DecodedInsn {
-            word: 0x000040_05, // offset=16 words = 64 bytes
+            word: 0x000405, // op0=5, n=0, offset=16 words (64 bytes / 4)
             len: 3,
         };
 

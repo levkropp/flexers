@@ -17,21 +17,27 @@ pub fn exec_rst0(cpu: &mut XtensaCpu, insn: DecodedInsn) -> Result<StopReason, E
 
 /// Execute ST0 format (RSR, WSR, etc.)
 fn exec_st0(cpu: &mut XtensaCpu, insn: DecodedInsn) -> Result<StopReason, ExecError> {
-    let r = (insn.word >> 12) & 0xF;
+    // Operation type is in bits [20:23] (high nibble of SR field)
+    let op = (insn.word >> 20) & 0xF;
 
-    match r {
+    match op {
         0 => exec_rsr(cpu, insn),
         1 => exec_wsr(cpu, insn),
-        2 => exec_nop(cpu, insn),
-        3 => exec_rfr(cpu, insn),
-        _ => Err(ExecError::IllegalInstruction(insn.word)),
+        _ => {
+            let r = (insn.word >> 12) & 0xF;
+            match r {
+                2 => exec_nop(cpu, insn),
+                3 => exec_rfr(cpu, insn),
+                _ => Err(ExecError::IllegalInstruction(insn.word)),
+            }
+        }
     }
 }
 
 /// RSR: Read Special Register
 fn exec_rsr(cpu: &mut XtensaCpu, insn: DecodedInsn) -> Result<StopReason, ExecError> {
     let t = reg_t(insn);
-    let sr = reg_s(insn);
+    let sr = ((insn.word >> 8) & 0xFF) as u32;  // SR is in bits [8:15]
 
     let val = cpu.read_special_register(sr);
     cpu.set_register(t, val);
@@ -42,7 +48,7 @@ fn exec_rsr(cpu: &mut XtensaCpu, insn: DecodedInsn) -> Result<StopReason, ExecEr
 /// WSR: Write Special Register
 fn exec_wsr(cpu: &mut XtensaCpu, insn: DecodedInsn) -> Result<StopReason, ExecError> {
     let t = reg_t(insn);
-    let sr = reg_s(insn);
+    let sr = ((insn.word >> 8) & 0xFF) as u32;  // SR is in bits [8:15]
 
     let val = cpu.get_register(t);
     cpu.write_special_register(sr, val);
@@ -53,7 +59,7 @@ fn exec_wsr(cpu: &mut XtensaCpu, insn: DecodedInsn) -> Result<StopReason, ExecEr
 /// XSR: Exchange Special Register
 fn exec_xsr(cpu: &mut XtensaCpu, insn: DecodedInsn) -> Result<StopReason, ExecError> {
     let t = reg_t(insn);
-    let sr = reg_s(insn);
+    let sr = ((insn.word >> 8) & 0xFF) as u32;  // SR is in bits [8:15]
 
     let old_sr = cpu.read_special_register(sr);
     let reg_val = cpu.get_register(t);
@@ -159,7 +165,7 @@ mod tests {
 
         // RSR a2, PS (sr=83)
         let insn = DecodedInsn {
-            word: 0x00_02_530, // t=2, sr=83, r=0, op1=0
+            word: 0x005320, // op0=0, t=2, sr=83, op=0 (RSR)
             len: 3,
         };
 
@@ -194,7 +200,7 @@ mod tests {
 
         // XSR a4, CCOUNT (sr=96)
         let insn = DecodedInsn {
-            word: 0x30_04_600, // t=4, sr=96
+            word: 0x036040, // op0=0, t=4, sr=96, op1=3 (XSR)
             len: 3,
         };
 

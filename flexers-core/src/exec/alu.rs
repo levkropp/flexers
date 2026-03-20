@@ -165,10 +165,10 @@ fn exec_sra(cpu: &mut XtensaCpu, insn: DecodedInsn) -> Result<StopReason, ExecEr
 /// SLLI: Shift left logical immediate
 fn exec_slli(cpu: &mut XtensaCpu, insn: DecodedInsn) -> Result<StopReason, ExecError> {
     let r = reg_r(insn);
-    let s = reg_s(insn);
+    let t = reg_t(insn);
     let sa = shift_amount(insn);
 
-    let result = cpu.get_register(s) << sa;
+    let result = cpu.get_register(t) << sa;
     cpu.set_register(r, result);
 
     Ok(StopReason::Continue)
@@ -276,8 +276,10 @@ mod tests {
 
         // SLLI a2, a1, 4 (result = 0x100)
         // op2=13 for SLLI, sa=4 in bits [8:12]
+        // Format: op0=0, t=1(a1), SA=4 (bits 8-12), r=2(a2), op1=1, op2=13
+        // Nibbles: op0=0, t=1, SA_low=4, r=2 (SA_high=0 overlaps r[0]), op1=1, op2=D
         let insn = DecodedInsn {
-            word: 0xD04110, // op0=0, t=1, s=1, r=2, sa=4 (bits 8-12), op2=13
+            word: 0xD12410,
             len: 3,
         };
 

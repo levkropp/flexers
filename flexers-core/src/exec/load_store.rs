@@ -19,7 +19,7 @@ pub fn exec_l32r(cpu: &mut XtensaCpu, insn: DecodedInsn) -> Result<StopReason, E
 
 /// Execute LSAI format (Load/Store with immediate offset)
 pub fn exec_lsai(cpu: &mut XtensaCpu, insn: DecodedInsn) -> Result<StopReason, ExecError> {
-    let op1 = (insn.word >> 16) & 0xF;
+    let op1 = (insn.word >> 12) & 0xF; // 'r' field at bits [12:15]
 
     match op1 {
         0 => exec_l8ui(cpu, insn),
@@ -187,8 +187,9 @@ mod tests {
         cpu.set_register(1, addr);
 
         // L32I a2, a1, 16 (offset 4 * 4 = 16)
+        // Format: op0=2, t=2, s=1, r=2 (op1), imm8=4
         let insn = DecodedInsn {
-            word: 0x04_02_21, // imm8=4, t=2, s=1, op1=2
+            word: 0x042122,
             len: 3,
         };
 
@@ -206,8 +207,9 @@ mod tests {
         cpu.set_register(2, 0xCAFEBABE);
 
         // S32I a2, a1, 8 (offset 2 * 4 = 8)
+        // Format: op0=2, t=2, s=1, r=6 (op1), imm8=2
         let insn = DecodedInsn {
-            word: 0x02_06_21, // imm8=2, t=2, s=1, op1=6
+            word: 0x026122,
             len: 3,
         };
 
