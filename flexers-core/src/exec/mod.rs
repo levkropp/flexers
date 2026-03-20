@@ -19,7 +19,7 @@ pub enum StopReason {
 }
 
 /// Execution error types
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum ExecError {
     /// Illegal or unimplemented instruction
     IllegalInstruction(u32),
@@ -29,6 +29,8 @@ pub enum ExecError {
     DivideByZero,
     /// Privilege violation
     PrivilegeViolation,
+    /// ROM stub error
+    RomStubError(String),
 }
 
 /// Main instruction dispatcher

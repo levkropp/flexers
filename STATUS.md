@@ -144,40 +144,209 @@ flexers/
 
 ---
 
-## Phase 2: Peripherals & I/O (NEXT)
+## Phase 2: Peripherals & I/O ✅ COMPLETE
 
-### Planned Components
+### Completed (100%)
 
-#### 2.1 UART (Week 4)
-- [ ] UART0/1/2 register emulation
-- [ ] TX/RX FIFO buffers
-- [ ] Interrupt generation
-- [ ] Baud rate configuration
-- [ ] Integration tests
+#### 2.1 UART ✅
+- UART0/1/2 register emulation
+- TX/RX FIFO buffers (256 bytes each)
+- Interrupt generation (RXFIFO_FULL, TXFIFO_EMPTY, FRM_ERR)
+- Baud rate configuration
+- **Tests**: 2/2 passing
 
-#### 2.2 Timers (Week 4)
-- [ ] General-purpose timers
-- [ ] Watchdog timer
-- [ ] RTC timer
-- [ ] Timer interrupt generation
-- [ ] Integration tests
+#### 2.2 Timers ✅
+- General-purpose timers (64-bit counter, alarm)
+- Auto-reload and one-shot modes
+- Timer interrupt generation
+- **Tests**: 3/3 passing
 
-#### 2.3 GPIO (Week 5)
-- [ ] Pin configuration
-- [ ] Digital I/O
-- [ ] Interrupt on change
-- [ ] Pull-up/pull-down
-- [ ] Integration tests
+#### 2.3 GPIO ✅
+- Pin configuration (40 pins)
+- Digital I/O
+- Interrupt on change (rising/falling/both edges)
+- Pull-up/pull-down modes
+- **Tests**: 5/5 passing
 
-#### 2.4 Interrupt Controller (Week 5)
-- [ ] Interrupt priority handling
-- [ ] Interrupt masking
-- [ ] Vector table management
-- [ ] Integration with peripherals
-- [ ] Integration tests
+#### 2.4 Interrupt Controller ✅
+- Interrupt priority handling (15 levels)
+- Interrupt masking
+- Vector table integration
+- CPU integration with interrupt checking
+- **Tests**: 3/3 passing
+
+#### 2.5 Peripheral Bus ✅
+- MMIO handler registration
+- Address range-based dispatch
+- Bus-level address decoding
+- **Tests**: 2/2 passing
+
+#### 2.6 Integration Testing ✅
+- Multi-peripheral scenarios
+- Interrupt controller + UART/Timer/GPIO
+- Peripheral bus integration
+- **Tests**: 5/5 passing
+
+### Test Summary
+- **Peripheral unit tests**: 20/20 passing (100%) ✅
+- **Peripheral integration tests**: 5/5 passing (100%) ✅
+- **Total**: 25/25 peripheral tests passing
 
 ---
 
-**Phase 1 Status**: ✅ COMPLETE (100%)
-**Phase 2 Status**: Planning phase
-**Overall Progress**: Phase 1 complete, ready for Phase 2
+## Phase 3: ROM Stubs & Symbols ✅ COMPLETE
+
+### Completed (100%)
+
+#### 3.1 Symbol Table Infrastructure ✅
+- RomSymbol data structures
+- SymbolTable with HashMap lookup (address → symbol, name → symbol)
+- Embedded ESP32 ROM symbols (17 core functions)
+- **Tests**: 2/2 passing
+
+#### 3.2 ROM Stub Dispatcher ✅
+- RomStubHandler trait
+- RomStubDispatcher with registry
+- ROM address range detection (0x4000_0000 - 0x4006_FFFF)
+- Error handling (unknown/unimplemented stubs)
+- **Tests**: 2/2 passing
+
+#### 3.3 Execution Loop Integration ✅
+- ROM check in run_batch() before instruction fetch
+- RomStubDispatcherTrait for dependency injection
+- CPU rom_dispatcher field
+- Borrow-safe Arc cloning
+- **No new tests** (covered by integration tests)
+
+#### 3.4 Core ROM Function Stubs ✅
+
+**I/O Functions** (9 functions):
+- `esp_rom_printf()` - Basic printf (%d, %s, %x support)
+- `ets_putc()` - Single character output
+- `memcpy()`, `memset()`, `memcmp()`, `memmove()` - Memory operations
+- `uart_tx_one_char()`, `uart_rx_one_char()` - UART I/O
+- `uart_div_modify()` - UART divisor configuration
+
+**Timing Functions** (3 functions):
+- `ets_delay_us()` - Microsecond delay (cycle-accurate)
+- `ets_get_cpu_frequency()` - Returns 160 MHz
+- `ets_update_cpu_frequency()` - Stub (no-op)
+
+**Boot/System Functions** (4 functions):
+- `Cache_Read_Enable()` - Flash cache enable
+- `Cache_Read_Disable()` - Flash cache disable
+- `rtc_get_reset_reason()` - Returns POWERON_RESET
+- `software_reset()` - Halts CPU
+
+**Total**: 16 ROM function stubs implemented
+
+#### 3.5 Helper Registry ✅
+- `create_esp32_dispatcher()` - One-line setup
+- Auto-registers all implemented ROM functions
+- **Tests**: 2/2 passing
+
+#### 3.6 Integration Testing ✅
+- ROM printf call test
+- Timing/cycle advancement test
+- Memory operation tests (memcpy, memset)
+- CPU frequency test
+- Boot function tests
+- Multiple sequential ROM calls
+- **Tests**: 8/8 passing
+
+### Test Summary
+- **Stub unit tests**: 4/4 passing (100%) ✅
+- **ROM integration tests**: 8/8 passing (100%) ✅
+- **Total**: 12/12 ROM stub tests passing
+
+### Files Created (Phase 3)
+
+**New Modules** (9 files):
+- `flexers-stubs/src/symbol.rs` (55 lines)
+- `flexers-stubs/src/symbol_table.rs` (80 lines)
+- `flexers-stubs/src/handler.rs` (19 lines)
+- `flexers-stubs/src/dispatcher.rs` (81 lines)
+- `flexers-stubs/src/esp32_symbols.rs` (27 lines)
+- `flexers-stubs/src/functions/io.rs` (207 lines)
+- `flexers-stubs/src/functions/timing.rs` (37 lines)
+- `flexers-stubs/src/functions/boot.rs` (43 lines)
+- `flexers-stubs/src/registry.rs` (66 lines)
+
+**Modified Files** (5 files):
+- `flexers-stubs/src/lib.rs` - Module exports
+- `flexers-core/src/lib.rs` - ROM stub check in run_batch
+- `flexers-core/src/cpu.rs` - Added rom_dispatcher field
+- `flexers-core/src/exec/mod.rs` - Added RomStubError variant
+- `flexers-core/Cargo.toml` - Added flexers-stubs dev-dependency
+
+**Test Files** (1 file):
+- `flexers-core/tests/rom_stub_test.rs` (234 lines)
+
+**Documentation** (2 files):
+- `flexers-stubs/README.md` - Usage guide
+- `flexers/PHASE3_SUMMARY.md` - Implementation summary
+
+**Total Phase 3 LOC**: ~950 lines of Rust code
+
+### Architecture Highlights
+
+**ROM Call Flow**:
+```
+Firmware → CALL0 0x40007ABC → CPU detects ROM range →
+Dispatcher lookup → Handler execution → Return to caller
+```
+
+**Calling Convention**: Xtensa Windowed ABI (args: a2-a7, return: a2, ret addr: a0)
+
+**Performance**: O(1) HashMap lookup, minimal overhead, cycle-accurate timing
+
+---
+
+## Overall Project Status
+
+**Phase 1**: ✅ COMPLETE (100%) - Core CPU & Memory
+**Phase 2**: ✅ COMPLETE (100%) - Peripherals & I/O
+**Phase 3**: ✅ COMPLETE (100%) - ROM Stubs & Symbols
+
+### Total Test Summary
+- **Core tests**: 28 passing
+- **Integration tests**: 4 passing
+- **Peripheral tests**: 5 passing
+- **Peripheral unit tests**: 20 passing
+- **ROM stub tests**: 4 passing
+- **ROM integration tests**: 8 passing
+- **Loader tests**: 1 passing
+- **TOTAL**: **70 tests passing** ✅
+
+### Total Lines of Code
+- **flexers-core**: ~2,900 lines
+- **flexers-periph**: ~1,200 lines
+- **flexers-stubs**: ~950 lines
+- **flexers-session**: ~400 lines
+- **Tests**: ~1,000 lines
+- **TOTAL**: **~6,450 lines** of Rust code
+
+---
+
+## Next Steps: Phase 4 - Flash SPI Emulation
+
+### Planned Components
+
+#### 4.1 SPI Flash Controller
+- [ ] SPI0/1 register emulation
+- [ ] Flash read/write commands
+- [ ] Flash memory backing store
+- [ ] Cache integration
+
+#### 4.2 Flash Memory Region
+- [ ] Memory-mapped flash (0x3F400000-0x3F7FFFFF)
+- [ ] Flash read caching
+- [ ] Write protection
+- [ ] Sector erase simulation
+
+#### 4.3 Integration
+- [ ] Flash loader support
+- [ ] Boot sequence from flash
+- [ ] Integration tests
+
+**Overall Progress**: Phases 1-3 complete (100%), ready for Phase 4

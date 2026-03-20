@@ -7,6 +7,15 @@ pub trait InterruptControllerTrait: Send + Sync {
     fn set_current_level(&mut self, level: u8);
 }
 
+/// Trait for ROM stub dispatcher (for dependency injection)
+pub trait RomStubDispatcherTrait: Send + Sync {
+    /// Check if address is in ROM range
+    fn is_rom_address(&self, addr: u32) -> bool;
+
+    /// Dispatch ROM function call
+    fn dispatch(&mut self, cpu: &mut XtensaCpu) -> Result<(), String>;
+}
+
 /// Xtensa CPU state optimized for cache performance
 /// Layout: HOT (accessed every instruction) → WARM (branches/exceptions) → COLD (large arrays)
 #[repr(align(64))]
@@ -42,6 +51,8 @@ pub struct XtensaCpu {
     mem: Arc<Memory>,
     /// Interrupt controller reference (optional)
     interrupt_controller: Option<Arc<Mutex<dyn InterruptControllerTrait>>>,
+    /// ROM stub dispatcher (optional)
+    rom_dispatcher: Option<Arc<Mutex<dyn RomStubDispatcherTrait>>>,
 
     // ===== WARM SECTION: Accessed on branches/exceptions =====
     /// Vector base address
@@ -98,12 +109,23 @@ impl XtensaCpu {
                 windows: Vec::new(),
             }),
             interrupt_controller: None,
+            rom_dispatcher: None,
         }
     }
 
     /// Set interrupt controller
     pub fn set_interrupt_controller(&mut self, ic: Arc<Mutex<dyn InterruptControllerTrait>>) {
         self.interrupt_controller = Some(ic);
+    }
+
+    /// Set ROM stub dispatcher
+    pub fn set_rom_stub_dispatcher(&mut self, dispatcher: Arc<Mutex<dyn RomStubDispatcherTrait>>) {
+        self.rom_dispatcher = Some(dispatcher);
+    }
+
+    /// Get ROM stub dispatcher reference
+    pub fn rom_stub_dispatcher(&self) -> &Option<Arc<Mutex<dyn RomStubDispatcherTrait>>> {
+        &self.rom_dispatcher
     }
 
     /// Get windowed register value

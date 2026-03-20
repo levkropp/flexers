@@ -1,14 +1,14 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+pub mod symbol;
+pub mod symbol_table;
+pub mod handler;
+pub mod dispatcher;
+pub mod esp32_symbols;
+pub mod functions;
+pub mod registry;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+// Re-export commonly used types
+pub use symbol::{RomSymbol, FunctionSignature, ArgType};
+pub use symbol_table::SymbolTable;
+pub use handler::RomStubHandler;
+pub use dispatcher::{RomStubDispatcher, StubError};
+pub use registry::create_esp32_dispatcher;

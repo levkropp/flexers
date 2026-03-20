@@ -18,6 +18,31 @@ pub fn run_batch(cpu: &mut XtensaCpu, cycles: usize) -> Result<usize, ExecError>
             cpu.take_interrupt(int_level);
         }
 
+        // Check if PC is in ROM range - clone Arc to avoid borrow issues
+        let pc = cpu.pc();
+        let rom_dispatcher_arc = cpu.rom_stub_dispatcher().clone();
+
+        if let Some(rom_dispatcher) = rom_dispatcher_arc {
+            let is_rom = {
+                if let Ok(dispatcher) = rom_dispatcher.lock() {
+                    dispatcher.is_rom_address(pc)
+                } else {
+                    false
+                }
+            };
+
+            if is_rom {
+                // Dispatch ROM stub call
+                if let Ok(mut dispatcher) = rom_dispatcher.lock() {
+                    dispatcher.dispatch(cpu)
+                        .map_err(|e| ExecError::RomStubError(e))?;
+                    cpu.inc_cycles(1);
+                    executed += 1;
+                    continue;  // Skip normal instruction fetch
+                }
+            }
+        }
+
         // Fetch instruction
         let insn = fetch(cpu.memory(), cpu.pc())
             .map_err(|_| ExecError::MemoryFault(cpu.pc()))?;
