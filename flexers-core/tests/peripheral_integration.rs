@@ -1,7 +1,7 @@
 use flexers_core::cpu::XtensaCpu;
 use flexers_core::memory::{Memory, MmioHandler};
 use flexers_periph::*;
-use flexers_periph::uart::InterruptRaiser;
+use flexers_periph::interrupt::InterruptRaiser;
 use std::sync::{Arc, Mutex};
 
 #[test]

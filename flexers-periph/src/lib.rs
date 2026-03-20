@@ -8,6 +8,10 @@ pub mod adc;
 pub mod dac;
 pub mod ledc;
 pub mod i2c;
+pub mod dma;
+pub mod spi;
+pub mod touch;
+pub mod rmt;
 
 // ESP32 peripheral base addresses
 pub const UART0_BASE: u32 = 0x3FF4_0000;
@@ -25,10 +29,15 @@ pub const DAC_BASE: u32 = 0x3FF4_8820; // DAC controller
 pub const LEDC_BASE: u32 = 0x3FF5_9000; // LED PWM controller
 pub const I2C0_BASE: u32 = 0x3FF5_3000; // I2C controller 0
 pub const I2C1_BASE: u32 = 0x3FF6_7000; // I2C controller 1
+pub const DMA_BASE: u32 = 0x3FF4_E000; // DMA controller
+pub const SPI2_BASE: u32 = 0x3FF6_4000; // SPI2 general purpose
+pub const SPI3_BASE: u32 = 0x3FF6_5000; // SPI3 general purpose
+pub const TOUCH_BASE: u32 = 0x3FF4_8800; // Touch sensor (overlaps with RTC/ADC region)
+pub const RMT_BASE: u32 = 0x3FF5_6000; // RMT peripheral
 
 // Re-export commonly used types
 pub use bus::{PeripheralBus, AddrRange};
-pub use interrupt::{InterruptController, InterruptSource, InterruptLevel};
+pub use interrupt::{InterruptController, InterruptSource, InterruptLevel, InterruptRaiser};
 pub use uart::Uart;
 pub use timer::Timer;
 pub use gpio::Gpio;
@@ -37,6 +46,10 @@ pub use adc::Adc;
 pub use dac::Dac;
 pub use ledc::Ledc;
 pub use i2c::I2c;
+pub use dma::Dma;
+pub use spi::Spi;
+pub use touch::Touch;
+pub use rmt::Rmt;
 
 // Implement PeripheralBusDispatch for PeripheralBus
 impl flexers_core::memory::PeripheralBusDispatch for PeripheralBus {
@@ -63,7 +76,7 @@ impl flexers_core::cpu::InterruptControllerTrait for InterruptController {
 }
 
 // Implement InterruptRaiser for InterruptController
-impl uart::InterruptRaiser for InterruptController {
+impl InterruptRaiser for InterruptController {
     fn raise(&mut self, source: InterruptSource) {
         self.raise(source);
     }

@@ -1,5 +1,5 @@
 use flexers_core::memory::MmioHandler;
-use crate::interrupt::InterruptSource;
+use crate::interrupt::{InterruptSource, InterruptRaiser};
 use std::sync::{Arc, Mutex};
 use std::collections::VecDeque;
 
@@ -15,11 +15,6 @@ const UART_INT_CLR_REG: u32 = 0x10;
 const UART_RXFIFO_FULL_INT: u32 = 1 << 0;
 const UART_TXFIFO_EMPTY_INT: u32 = 1 << 1;
 const UART_FRM_ERR_INT: u32 = 1 << 3;
-
-/// Trait for interrupt raising (for dependency injection)
-pub trait InterruptRaiser: Send + Sync {
-    fn raise(&mut self, source: InterruptSource);
-}
 
 /// UART peripheral (models one UART instance)
 pub struct Uart {

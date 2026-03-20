@@ -1,6 +1,5 @@
 use flexers_core::memory::MmioHandler;
-use crate::interrupt::InterruptSource;
-use crate::uart::InterruptRaiser;
+use crate::interrupt::{InterruptSource, InterruptRaiser};
 use std::sync::{Arc, Mutex};
 
 /// SPI Flash controller registers (ESP32 SPI0/SPI1)

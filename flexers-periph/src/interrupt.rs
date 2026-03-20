@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex};
+/// Trait for interrupt raising (for dependency injection)
+pub trait InterruptRaiser: Send + Sync {
+    fn raise(&mut self, source: InterruptSource);
+}
 
 /// ESP32 interrupt sources (simplified - not all 64 sources)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -15,6 +18,14 @@ pub enum InterruptSource {
     Gpio = 8,
     Spi0 = 9,
     Spi1 = 10,
+    Spi2 = 11,
+    Spi3 = 12,
+    I2c0 = 13,
+    I2c1 = 14,
+    Dma = 15,
+    Adc = 16,
+    Touch = 17,
+    Rmt = 18,
     // Add more as needed
 }
 
