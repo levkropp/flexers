@@ -10,5 +10,8 @@ repository.workspace = true
 flexers-core = { path = "../flexers-core" }
 flexers-periph = { path = "../flexers-periph" }
 lazy_static = "1.4"
+rustls = "0.23"
+rustls-pemfile = "2.0"
+webpki-roots = "0.26"
 
 [dev-dependencies]

@@ -9,6 +9,9 @@ use std::net::{SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::sync::{Arc, Mutex};
 
 use lazy_static::lazy_static;
+use rustls::{ClientConnection, StreamOwned as TlsStream};
+
+use super::tls_manager::TLS_MANAGER;
 
 pub type SocketFd = u32;
 
@@ -25,6 +28,15 @@ pub enum SocketType {
     TcpStream,
     TcpListener,
     Udp,
+}
+
+/// TLS handshake state
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TlsHandshakeState {
+    NotStarted,
+    InProgress,
+    Complete,
+    Failed,
 }
 
 /// Socket state
@@ -59,6 +71,11 @@ pub struct SocketState {
     recv_buffer_size: usize,
     send_buffer_size: usize,
     recv_timeout_ms: Option<u64>,
+
+    /// TLS support
+    tls_stream: Option<Box<TlsStream<ClientConnection, TcpStream>>>,
+    tls_handshake_state: TlsHandshakeState,
+    tls_server_name: Option<String>,
 }
 
 impl SocketState {
@@ -77,6 +94,9 @@ impl SocketState {
             recv_buffer_size: 8192,
             send_buffer_size: 8192,
             recv_timeout_ms: None,
+            tls_stream: None,
+            tls_handshake_state: TlsHandshakeState::NotStarted,
+            tls_server_name: None,
         }
     }
 
@@ -95,6 +115,9 @@ impl SocketState {
             recv_buffer_size: 8192,
             send_buffer_size: 8192,
             recv_timeout_ms: None,
+            tls_stream: None,
+            tls_handshake_state: TlsHandshakeState::NotStarted,
+            tls_server_name: None,
         }
     }
 
@@ -113,6 +136,9 @@ impl SocketState {
             recv_buffer_size: 8192,
             send_buffer_size: 8192,
             recv_timeout_ms: None,
+            tls_stream: None,
+            tls_handshake_state: TlsHandshakeState::NotStarted,
+            tls_server_name: None,
         }
     }
 
@@ -205,8 +231,96 @@ impl SocketState {
         }
     }
 
+    /// Upgrade existing TCP connection to TLS (non-blocking)
+    pub fn start_tls_handshake(&mut self, server_name: &str) -> std::io::Result<()> {
+        use rustls::pki_types::ServerName;
+        use std::io::{Error, ErrorKind};
+
+        // Take ownership of tcp_stream
+        let tcp_stream = self.tcp_stream.take()
+            .ok_or_else(|| Error::new(ErrorKind::NotConnected, "No TCP stream"))?;
+
+        // Get TLS config from TLS_MANAGER
+        let config = TLS_MANAGER.lock()
+            .map_err(|_| Error::new(ErrorKind::Other, "Failed to lock TLS manager"))?
+            .get_client_config();
+
+        // Create rustls ServerName with SNI
+        let server_name_obj = ServerName::try_from(server_name.to_string())
+            .map_err(|_| Error::new(ErrorKind::InvalidInput, "Invalid SNI hostname"))?;
+
+        // Create ClientConnection
+        let conn = ClientConnection::new(config, server_name_obj)
+            .map_err(|e| Error::new(ErrorKind::Other, format!("TLS connection error: {}", e)))?;
+
+        // Create TLS stream (already non-blocking from TCP stream)
+        let mut tls_stream = TlsStream::new(conn, tcp_stream);
+
+        // Start handshake (may return WouldBlock)
+        match tls_stream.conn.complete_io(&mut tls_stream.sock) {
+            Ok(_) => {
+                self.tls_handshake_state = TlsHandshakeState::Complete;
+            }
+            Err(e) if e.kind() == ErrorKind::WouldBlock => {
+                self.tls_handshake_state = TlsHandshakeState::InProgress;
+            }
+            Err(e) => {
+                self.tls_handshake_state = TlsHandshakeState::Failed;
+                // Put tcp_stream back since handshake failed
+                self.tcp_stream = Some(tls_stream.sock);
+                return Err(e);
+            }
+        }
+
+        self.tls_stream = Some(Box::new(tls_stream));
+        self.tls_server_name = Some(server_name.to_string());
+        Ok(())
+    }
+
+    /// Continue TLS handshake (for non-blocking completion)
+    pub fn continue_tls_handshake(&mut self) -> std::io::Result<TlsHandshakeState> {
+        use std::io::{Error, ErrorKind};
+
+        if self.tls_handshake_state != TlsHandshakeState::InProgress {
+            return Ok(self.tls_handshake_state);
+        }
+
+        let tls_stream = self.tls_stream.as_mut()
+            .ok_or_else(|| Error::new(ErrorKind::Other, "No TLS stream"))?;
+
+        match tls_stream.conn.complete_io(&mut tls_stream.sock) {
+            Ok(_) => {
+                self.tls_handshake_state = TlsHandshakeState::Complete;
+                Ok(TlsHandshakeState::Complete)
+            }
+            Err(e) if e.kind() == ErrorKind::WouldBlock => {
+                Ok(TlsHandshakeState::InProgress)
+            }
+            Err(e) => {
+                self.tls_handshake_state = TlsHandshakeState::Failed;
+                Err(e)
+            }
+        }
+    }
+
+    /// Get TLS handshake state
+    pub fn get_tls_handshake_state(&self) -> TlsHandshakeState {
+        self.tls_handshake_state
+    }
+
+    /// Check if TLS is active
+    pub fn is_tls_active(&self) -> bool {
+        self.tls_stream.is_some() && self.tls_handshake_state == TlsHandshakeState::Complete
+    }
+
     /// Send data
     pub fn send(&mut self, data: &[u8]) -> std::io::Result<usize> {
+        // Priority 1: TLS (if active)
+        if let Some(ref mut tls_stream) = self.tls_stream {
+            return tls_stream.write(data);
+        }
+
+        // Priority 2: Plain TCP
         if let Some(ref mut stream) = self.tcp_stream {
             stream.write(data)
         } else if let Some(ref mut socket) = self.udp_socket {
@@ -235,7 +349,14 @@ impl SocketState {
     pub fn recv(&mut self, max_len: usize) -> std::io::Result<Vec<u8>> {
         let mut buf = vec![0u8; max_len];
 
-        let n = if let Some(ref mut stream) = self.tcp_stream {
+        let n = if let Some(ref mut tls_stream) = self.tls_stream {
+            // TLS read (decryption happens automatically)
+            match tls_stream.read(&mut buf) {
+                Ok(n) => n,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => 0,
+                Err(e) => return Err(e),
+            }
+        } else if let Some(ref mut stream) = self.tcp_stream {
             match stream.read(&mut buf) {
                 Ok(n) => n,
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => 0,
@@ -685,5 +806,21 @@ mod tests {
         let received = server_stream.read(&mut buf).unwrap();
         assert_eq!(received, test_data.len());
         assert_eq!(&buf[..received], test_data);
+    }
+
+    #[test]
+    fn test_tls_handshake_state_tracking() {
+        let socket = SocketState::new_tcp_stream(500, AddressFamily::IPv4);
+        assert_eq!(socket.get_tls_handshake_state(), TlsHandshakeState::NotStarted);
+        assert!(!socket.is_tls_active());
+    }
+
+    #[test]
+    fn test_tls_requires_tcp_stream() {
+        let mut socket = SocketState::new_tcp_stream(501, AddressFamily::IPv4);
+
+        // Should fail without TCP connection
+        let result = socket.start_tls_handshake("example.com");
+        assert!(result.is_err());
     }
 }

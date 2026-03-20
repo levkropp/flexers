@@ -11,3 +11,5 @@ pub mod system;
 pub mod wifi;
 pub mod network;
 pub mod socket_manager;
+pub mod tls_manager;
+pub mod tls;

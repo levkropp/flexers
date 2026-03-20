@@ -5,7 +5,7 @@ use std::sync::Arc;
 use crate::{
     dispatcher::RomStubDispatcher,
     symbol_table::SymbolTable,
-    functions::{io::*, timing::*, boot::*, memory::*, string::*, conversion::*, wifi::*, network::*},
+    functions::{io::*, timing::*, boot::*, memory::*, string::*, conversion::*, wifi::*, network::*, tls::*},
     freertos::stubs::*,
 };
 
@@ -137,6 +137,29 @@ pub fn create_esp32_dispatcher() -> RomStubDispatcher {
     dispatcher.register(Select);
     dispatcher.register(Getaddrinfo);
     dispatcher.register(Freeaddrinfo);
+
+    // Register TLS/mbedTLS functions
+    dispatcher.register(MbedtlsSslInit);
+    dispatcher.register(MbedtlsSslConfigInit);
+    dispatcher.register(MbedtlsSslConfigDefaults);
+    dispatcher.register(MbedtlsSslSetup);
+    dispatcher.register(MbedtlsSslFree);
+    dispatcher.register(MbedtlsX509CrtInit);
+    dispatcher.register(MbedtlsX509CrtParse);
+    dispatcher.register(MbedtlsX509CrtFree);
+    dispatcher.register(MbedtlsSslConfAuthmode);
+    dispatcher.register(MbedtlsSslConfCaChain);
+    dispatcher.register(MbedtlsSslConfRng);
+    dispatcher.register(MbedtlsSslSetHostname);
+    dispatcher.register(MbedtlsSslSetBio);
+    dispatcher.register(MbedtlsSslHandshake);
+    dispatcher.register(MbedtlsSslRead);
+    dispatcher.register(MbedtlsSslWrite);
+    dispatcher.register(MbedtlsSslCloseNotify);
+    dispatcher.register(MbedtlsCtrDrbgInit);
+    dispatcher.register(MbedtlsCtrDrbgSeed);
+    dispatcher.register(MbedtlsEntropyInit);
+    dispatcher.register(MbedtlsEntropyFree);
 
     dispatcher
 }
