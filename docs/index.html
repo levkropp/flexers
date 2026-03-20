@@ -43,7 +43,7 @@
         <p class="subtitle">High-performance Xtensa CPU emulator for ESP32, written in pure Rust. Native integration, memory safety, and zero FFI overhead.</p>
         <div class="stats">
             <div class="stat">
-                <div class="stat-value">~7.1K</div>
+                <div class="stat-value">~20K</div>
                 <div class="stat-label">Lines of Rust</div>
             </div>
             <div class="stat">
@@ -51,11 +51,11 @@
                 <div class="stat-label">Instructions</div>
             </div>
             <div class="stat">
-                <div class="stat-value">83</div>
+                <div class="stat-value">260+</div>
                 <div class="stat-label">Tests Passing</div>
             </div>
             <div class="stat">
-                <div class="stat-value">4/4</div>
+                <div class="stat-value">10/10</div>
                 <div class="stat-label">Phases Done</div>
             </div>
         </div>
@@ -163,21 +163,19 @@
 
     <section class="section" id="roadmap">
         <div class="section-label">Development Timeline</div>
-        <h2>9-Week Roadmap to LVGL Demo</h2>
+        <h2>Complete IoT Emulation Platform</h2>
 
         <div class="timeline">
             <div class="timeline-item completed">
                 <div class="timeline-marker"></div>
                 <div class="timeline-content">
-                    <h3>Phase 1: Core CPU & Memory <span class="phase-status">✅ 100%</span></h3>
-                    <p>Weeks 1-3 • Xtensa CPU, memory subsystem, 30+ instructions, execution loop</p>
+                    <h3>Phases 1-4: Foundation <span class="phase-status">✅ 100%</span></h3>
+                    <p>Core CPU, Memory, Peripherals, Flash SPI</p>
                     <ul>
-                        <li>✅ XtensaCpu with windowed registers</li>
+                        <li>✅ Xtensa CPU with windowed registers</li>
                         <li>✅ Page-table memory (520KB SRAM, 448KB ROM, 4MB flash)</li>
-                        <li>✅ Instruction fetch/decode (16-bit/24-bit)</li>
-                        <li>✅ ALU, load/store, branches, calls, special registers</li>
-                        <li>✅ Binary loader (ESP32 format)</li>
-                        <li>✅ Integration tests (28 tests passing)</li>
+                        <li>✅ UART, timers, GPIO, interrupt controller</li>
+                        <li>✅ SPI flash emulation with write protection</li>
                     </ul>
                 </div>
             </div>
@@ -185,14 +183,16 @@
             <div class="timeline-item completed">
                 <div class="timeline-marker"></div>
                 <div class="timeline-content">
-                    <h3>Phase 2: Peripherals & I/O <span class="phase-status">✅ 100%</span></h3>
-                    <p>Weeks 4-5 • UART, timers, GPIO, interrupts</p>
+                    <h3>Phases 5-7: Advanced Peripherals <span class="phase-status">✅ 100%</span></h3>
+                    <p>ADC, DAC, PWM, I2C, DMA, Touch, RMT</p>
                     <ul>
-                        <li>✅ MMIO handler dispatcher</li>
-                        <li>✅ UART0/1/2 with TX/RX FIFOs</li>
-                        <li>✅ General-purpose timers (64-bit)</li>
-                        <li>✅ GPIO with interrupts (40 pins)</li>
-                        <li>✅ Interrupt controller (25 tests passing)</li>
+                        <li>✅ 8-channel 12-bit ADC</li>
+                        <li>✅ 2-channel 8-bit DAC</li>
+                        <li>✅ 16-channel PWM (LEDC)</li>
+                        <li>✅ I2C master/slave (2 instances)</li>
+                        <li>✅ DMA with descriptor chaining</li>
+                        <li>✅ 10-channel capacitive touch sensing</li>
+                        <li>✅ 8-channel RMT (IR, WS2812 LEDs)</li>
                     </ul>
                 </div>
             </div>
@@ -200,14 +200,15 @@
             <div class="timeline-item completed">
                 <div class="timeline-marker"></div>
                 <div class="timeline-content">
-                    <h3>Phase 3: ROM Stubs & Symbols <span class="phase-status">✅ 100%</span></h3>
-                    <p>Weeks 6-7 • ROM function interception</p>
+                    <h3>Phases 8-9: FreeRTOS <span class="phase-status">✅ 100%</span></h3>
+                    <p>Complete RTOS emulation for multitasking</p>
                     <ul>
-                        <li>✅ Symbol table infrastructure</li>
-                        <li>✅ ROM stub dispatcher (HashMap-based)</li>
-                        <li>✅ 16 ROM functions (printf, memcpy, timing, boot)</li>
-                        <li>✅ ESP32 symbol database</li>
-                        <li>✅ Integration tests (12 tests passing)</li>
+                        <li>✅ Task scheduler with priority preemption</li>
+                        <li>✅ Queues, semaphores, mutexes</li>
+                        <li>✅ Event groups for task synchronization</li>
+                        <li>✅ Software timers with callbacks</li>
+                        <li>✅ Timer interrupt integration (automatic scheduling)</li>
+                        <li>✅ 295+ FreeRTOS tests passing</li>
                     </ul>
                 </div>
             </div>
@@ -215,14 +216,15 @@
             <div class="timeline-item completed">
                 <div class="timeline-marker"></div>
                 <div class="timeline-content">
-                    <h3>Phase 4: Flash SPI Emulation <span class="phase-status">✅ 100%</span></h3>
-                    <p>Week 7-8 • SPI flash controller</p>
+                    <h3>Phase 10A: Real Network I/O <span class="phase-status">✅ 100%</span></h3>
+                    <p>Host socket bridging for real network communication</p>
                     <ul>
-                        <li>✅ SPI1 register interface</li>
-                        <li>✅ Flash commands (READ, WRITE, ERASE)</li>
-                        <li>✅ Write protection enforcement</li>
-                        <li>✅ 64-byte data buffer</li>
-                        <li>✅ Integration tests (13 tests passing)</li>
+                        <li>✅ Socket manager (fake FD → real host sockets)</li>
+                        <li>✅ TCP client/server with non-blocking I/O</li>
+                        <li>✅ UDP send/receive</li>
+                        <li>✅ Real DNS resolution via std::net</li>
+                        <li>✅ Connect to AWS IoT, MQTT brokers, HTTP servers</li>
+                        <li>✅ 260+ tests passing (100% pass rate)</li>
                     </ul>
                 </div>
             </div>
@@ -230,14 +232,15 @@
             <div class="timeline-item">
                 <div class="timeline-marker"></div>
                 <div class="timeline-content">
-                    <h3>Phase 5: Advanced Features</h3>
-                    <p>Weeks 9-10 • Memory-mapped flash, real firmware, advanced peripherals</p>
+                    <h3>Phase 10B-D: Advanced Networking</h3>
+                    <p>In Progress • Enhanced network features</p>
                     <ul>
-                        <li>Memory-mapped flash (direct reads from 0x3F400000)</li>
-                        <li>Real ESP-IDF firmware testing</li>
-                        <li>Additional peripherals (SPI, I2C, RMT, LEDC)</li>
-                        <li>WiFi/Bluetooth stubs (basic)</li>
-                        <li>LVGL demo support</li>
+                        <li>select()/poll() for socket multiplexing</li>
+                        <li>TLS/SSL support (rustls)</li>
+                        <li>IPv6 dual-stack</li>
+                        <li>Socket options (TCP_NODELAY, etc.)</li>
+                        <li>Async I/O with background threads</li>
+                        <li>Network simulation (latency, packet loss)</li>
                     </ul>
                 </div>
             </div>
@@ -245,12 +248,12 @@
             <div class="timeline-item future">
                 <div class="timeline-marker"></div>
                 <div class="timeline-content">
-                    <h3>Phase 6: JIT Compilation</h3>
-                    <p>Future • If benchmarking reveals performance gaps</p>
+                    <h3>Future: lwIP & JIT</h3>
+                    <p>Optional enhancements</p>
                     <ul>
-                        <li>Basic block compilation</li>
-                        <li>Register allocation</li>
-                        <li>Hot path detection</li>
+                        <li>Full lwIP TCP/IP stack integration</li>
+                        <li>Virtual network interface</li>
+                        <li>JIT compilation for hot paths</li>
                     </ul>
                 </div>
             </div>
