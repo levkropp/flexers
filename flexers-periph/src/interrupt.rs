@@ -13,6 +13,8 @@ pub enum InterruptSource {
     Timer1Group1 = 6,
     GpioNmi = 7,
     Gpio = 8,
+    Spi0 = 9,
+    Spi1 = 10,
     // Add more as needed
 }
 

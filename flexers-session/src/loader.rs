@@ -8,6 +8,7 @@ pub enum LoadError {
     InvalidMagic(u8),
     InvalidFormat(String),
     MemoryError(String),
+    InvalidAddress(u32, String),
 }
 
 impl From<std::io::Error> for LoadError {
@@ -100,6 +101,9 @@ pub fn load_firmware(path: &Path, mem: &Memory) -> Result<FirmwareInfo, LoadErro
 
         let segment_data = &data[offset..offset+len];
 
+        // Validate segment address
+        validate_segment_address(addr, len as u32)?;
+
         // Write to memory
         for (i, &byte) in segment_data.iter().enumerate() {
             mem.write_u8(addr + i as u32, byte);
@@ -118,4 +122,45 @@ pub fn load_firmware(path: &Path, mem: &Memory) -> Result<FirmwareInfo, LoadErro
         segment_count,
         segments,
     })
+}
+
+/// Validate that a segment address falls within valid ESP32 memory regions
+fn validate_segment_address(addr: u32, size: u32) -> Result<(), LoadError> {
+    // Valid regions for firmware segments:
+    // - SRAM: 0x3FFA0000 - 0x3FFFFFFF (520 KB)
+    // - ROM: 0x40000000 - 0x4006FFFF (448 KB) - read-only, shouldn't load here
+    // - Flash data: 0x3F400000 - 0x3F7FFFFF (4 MB)
+    // - Flash instruction: 0x40080000 - 0x400BFFFF (4 MB)
+    // - RTC DRAM: 0x3FF80000 - 0x3FF81FFF (8 KB)
+
+    let end_addr = addr.wrapping_add(size);
+
+    let is_valid = match addr {
+        // SRAM region
+        0x3FFA0000..=0x3FFFFFFF => end_addr <= 0x40000000,
+        // Flash data region
+        0x3F400000..=0x3F7FFFFF => end_addr <= 0x3F800000,
+        // Flash instruction region
+        0x40080000..=0x400BFFFF => end_addr <= 0x400C0000,
+        // RTC DRAM region
+        0x3FF80000..=0x3FF81FFF => end_addr <= 0x3FF82000,
+        // Invalid region
+        _ => false,
+    };
+
+    if !is_valid {
+        return Err(LoadError::InvalidAddress(
+            addr,
+            format!(
+                "Segment address 0x{:08X} (size {}) not in valid memory region. \
+                Valid regions: SRAM (0x3FFA0000-0x3FFFFFFF), \
+                Flash Data (0x3F400000-0x3F7FFFFF), \
+                Flash Insn (0x40080000-0x400BFFFF), \
+                RTC DRAM (0x3FF80000-0x3FF81FFF)",
+                addr, size
+            ),
+        ));
+    }
+
+    Ok(())
 }

@@ -5,11 +5,26 @@ use crate::handler::RomStubHandler;
 pub struct CacheReadEnable;
 
 impl RomStubHandler for CacheReadEnable {
-    fn call(&self, _cpu: &mut XtensaCpu) -> u32 {
-        // On ESP32, this maps flash to address space
-        // For emulation, we already have flash mapped
-        // Just return success
-        0
+    fn call(&self, cpu: &mut XtensaCpu) -> u32 {
+        // Arguments:
+        // a2 = odd_rom (0 or 1)
+        // a3 = even_rom (0 or 1)
+        // a4 = odd_cache_size
+        // a5 = even_cache_size
+
+        // For emulation:
+        // - Flash regions already mapped in page table
+        // - No actual cache management needed
+        // - Just return success
+
+        #[cfg(debug_assertions)]
+        {
+            let odd_rom = cpu.get_register(2);
+            let even_rom = cpu.get_register(3);
+            println!("[Cache_Read_Enable] odd_rom={}, even_rom={}", odd_rom, even_rom);
+        }
+
+        0  // Success
     }
 
     fn name(&self) -> &str {
@@ -24,6 +39,12 @@ impl RomStubHandler for CacheReadDisable {
     fn call(&self, _cpu: &mut XtensaCpu) -> u32 {
         // Disable flash cache
         // For emulation, we ignore this
+
+        #[cfg(debug_assertions)]
+        {
+            println!("[Cache_Read_Disable] called");
+        }
+
         0
     }
 

@@ -12,3 +12,4 @@ repository.workspace = true
 [dev-dependencies]
 flexers-periph = { path = "../flexers-periph" }
 flexers-stubs = { path = "../flexers-stubs" }
+flexers-session = { path = "../flexers-session" }

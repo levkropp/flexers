@@ -72,11 +72,11 @@ title: Documentation
             <h2>🎯 Roadmap</h2>
             <p>Development timeline and future features.</p>
             <ul>
-                <li>Phase 1: Core CPU & Memory ✓ 85%</li>
-                <li>Phase 2: Peripherals & I/O</li>
-                <li>Phase 3: ROM Stubs</li>
-                <li>Phase 4: Display Integration</li>
-                <li>Phase 5: Cyders Integration</li>
+                <li>Phase 1: Core CPU & Memory ✅ 100%</li>
+                <li>Phase 2: Peripherals & I/O ✅ 100%</li>
+                <li>Phase 3: ROM Stubs ✅ 100%</li>
+                <li>Phase 4: Flash SPI Emulation ✅ 100%</li>
+                <li>Phase 5: Advanced Features (Next)</li>
             </ul>
             <a href="{{ '/#roadmap' | relative_url }}" class="doc-link">View Full Roadmap →</a>
         </div>

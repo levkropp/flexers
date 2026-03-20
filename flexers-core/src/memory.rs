@@ -242,6 +242,27 @@ impl Memory {
     pub fn read_bytes(&self, addr: u32, len: usize) -> Vec<u8> {
         (0..len).map(|i| self.read_u8(addr + i as u32)).collect()
     }
+
+    /// Load flash contents from SPI flash controller backing store
+    ///
+    /// This copies data from the SPI flash controller's internal storage
+    /// to the memory-mapped flash regions (0x3F400000 and 0x40080000).
+    /// This is needed after firmware is loaded into the SPI flash controller
+    /// to make it accessible to the CPU via memory-mapped addresses.
+    pub fn load_flash_from_controller(&mut self, flash_store: Arc<Mutex<Vec<u8>>>) {
+        let flash = flash_store.lock().unwrap();
+        let copy_len = flash.len().min(FLASH_DATA_SIZE);
+
+        unsafe {
+            // Copy to flash data region
+            let flash_data = &mut *self.flash_data.get();
+            flash_data[..copy_len].copy_from_slice(&flash[..copy_len]);
+
+            // Copy to flash instruction region (same backing data)
+            let flash_insn = &mut *self.flash_insn.get();
+            flash_insn[..copy_len].copy_from_slice(&flash[..copy_len]);
+        }
+    }
 }
 
 #[derive(Debug)]
