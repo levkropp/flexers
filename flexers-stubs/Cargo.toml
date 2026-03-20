@@ -8,6 +8,7 @@ repository.workspace = true
 
 [dependencies]
 flexers-core = { path = "../flexers-core" }
+flexers-periph = { path = "../flexers-periph" }
 lazy_static = "1.4"
 
 [dev-dependencies]

@@ -261,6 +261,48 @@ impl FreeRtosScheduler {
         None
     }
 
+    /// Peek at next task without removing it from queue
+    pub fn peek_next_task(&self) -> Option<TaskHandle> {
+        self.schedule()
+    }
+
+    /// Get task priority by handle
+    pub fn get_task_priority(&self, task_handle: TaskHandle) -> Option<u8> {
+        self.tasks.get(task_handle)
+            .and_then(|t| t.as_ref())
+            .map(|t| t.priority())
+    }
+
+    /// Wake a blocked task (helper for queues, event groups, etc.)
+    pub fn wake_task(&mut self, task_handle: TaskHandle) -> Result<(), String> {
+        let task = self.tasks.get_mut(task_handle)
+            .and_then(|t| t.as_mut())
+            .ok_or("Invalid task handle")?;
+
+        if task.state() == TaskState::Blocked {
+            task.wake();
+            let priority = task.priority() as usize;
+            self.ready_queues[priority].push(task_handle);
+        }
+
+        Ok(())
+    }
+
+    /// Block a task for specified ticks (helper for queues, event groups, etc.)
+    pub fn block_task(&mut self, task_handle: TaskHandle, timeout_ticks: u32) -> Result<(), String> {
+        let task = self.tasks.get_mut(task_handle)
+            .and_then(|t| t.as_mut())
+            .ok_or("Invalid task handle")?;
+
+        let priority = task.priority() as usize;
+        task.delay(timeout_ticks);
+
+        // Remove from ready queue
+        self.ready_queues[priority].retain(|&h| h != task_handle);
+
+        Ok(())
+    }
+
     /// Yield current task (move to end of its priority queue)
     pub fn yield_task(&mut self) -> Result<(), String> {
         let task_handle = self.current_task

@@ -159,6 +159,19 @@ impl TaskControlBlock {
         }
     }
 
+    /// Delay task (alias for set_delay)
+    pub fn delay(&mut self, ticks: u32) {
+        self.set_delay(ticks);
+    }
+
+    /// Wake task from blocked state
+    pub fn wake(&mut self) {
+        if self.state == TaskState::Blocked {
+            self.delay_ticks = 0;
+            self.state = TaskState::Ready;
+        }
+    }
+
     /// Decrement delay ticks (returns true if task should wake)
     pub fn tick(&mut self) -> bool {
         if self.delay_ticks > 0 {

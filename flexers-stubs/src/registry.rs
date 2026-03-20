@@ -5,7 +5,7 @@ use std::sync::Arc;
 use crate::{
     dispatcher::RomStubDispatcher,
     symbol_table::SymbolTable,
-    functions::{io::*, timing::*, boot::*, memory::*, string::*, conversion::*},
+    functions::{io::*, timing::*, boot::*, memory::*, string::*, conversion::*, wifi::*, network::*},
     freertos::stubs::*,
 };
 
@@ -82,6 +82,60 @@ pub fn create_esp32_dispatcher() -> RomStubDispatcher {
     dispatcher.register(XSemaphoreCreateRecursiveMutex);
     dispatcher.register(XSemaphoreTakeMutex);
     dispatcher.register(XSemaphoreGiveMutex);
+
+    // Register FreeRTOS queue functions
+    dispatcher.register(XQueueCreate);
+    dispatcher.register(XQueueSend);
+    dispatcher.register(XQueueReceive);
+    dispatcher.register(UxQueueMessagesWaiting);
+    dispatcher.register(UxQueueSpacesAvailable);
+    dispatcher.register(XQueueReset);
+    dispatcher.register(VQueueDelete);
+
+    // Register FreeRTOS event group functions
+    dispatcher.register(XEventGroupCreate);
+    dispatcher.register(XEventGroupSetBits);
+    dispatcher.register(XEventGroupClearBits);
+    dispatcher.register(XEventGroupWaitBits);
+    dispatcher.register(XEventGroupGetBits);
+    dispatcher.register(VEventGroupDelete);
+
+    // Register FreeRTOS software timer functions
+    dispatcher.register(XTimerCreate);
+    dispatcher.register(XTimerStart);
+    dispatcher.register(XTimerStop);
+    dispatcher.register(XTimerReset);
+    dispatcher.register(XTimerChangePeriod);
+    dispatcher.register(XTimerIsTimerActive);
+    dispatcher.register(XTimerDelete);
+
+    // Register WiFi functions
+    dispatcher.register(EspWifiInit);
+    dispatcher.register(EspWifiDeinit);
+    dispatcher.register(EspWifiSetMode);
+    dispatcher.register(EspWifiGetMode);
+    dispatcher.register(EspWifiStart);
+    dispatcher.register(EspWifiStop);
+    dispatcher.register(EspWifiConnect);
+    dispatcher.register(EspWifiDisconnect);
+    dispatcher.register(EspWifiSetConfig);
+    dispatcher.register(EspWifiGetConfig);
+
+    // Register network/socket functions
+    dispatcher.register(Socket);
+    dispatcher.register(Bind);
+    dispatcher.register(Connect);
+    dispatcher.register(Listen);
+    dispatcher.register(Accept);
+    dispatcher.register(Send);
+    dispatcher.register(SendTo);
+    dispatcher.register(Recv);
+    dispatcher.register(RecvFrom);
+    dispatcher.register(Close);
+    dispatcher.register(SetSockOpt);
+    dispatcher.register(GetSockOpt);
+    dispatcher.register(Getaddrinfo);
+    dispatcher.register(Freeaddrinfo);
 
     dispatcher
 }

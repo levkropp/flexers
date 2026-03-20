@@ -61,6 +61,36 @@ impl Timer {
         self.int_raiser = Some(raiser);
     }
 
+    /// Set alarm value
+    pub fn set_alarm(&mut self, alarm: u64) {
+        self.alarm = alarm;
+    }
+
+    /// Set auto-reload enabled
+    pub fn set_auto_reload(&mut self, enabled: bool) {
+        self.auto_reload = enabled;
+    }
+
+    /// Set load value (for auto-reload)
+    pub fn set_load_value(&mut self, load_value: u64) {
+        self.load_value = load_value;
+    }
+
+    /// Set interrupt enabled
+    pub fn set_int_enabled(&mut self, enabled: bool) {
+        self.int_enabled = enabled;
+    }
+
+    /// Set timer enabled
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled;
+    }
+
+    /// Get enabled status
+    pub fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+
     /// Tick timer (called every CPU cycle)
     pub fn tick(&mut self) {
         if !self.enabled {

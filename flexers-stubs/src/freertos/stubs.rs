@@ -7,6 +7,9 @@ use crate::handler::RomStubHandler;
 use super::scheduler::SCHEDULER;
 use super::semaphore::SEMAPHORE_MANAGER;
 use super::mutex::MUTEX_MANAGER;
+use super::queue;
+use super::event_group;
+use super::sw_timer;
 
 // ============================================================================
 // Task Management Stubs
@@ -581,6 +584,531 @@ fn read_string_from_memory(cpu: &XtensaCpu, addr: u32, max_len: usize) -> String
     }
 
     result
+}
+
+// ============================================================================
+// Queue Stubs
+// ============================================================================
+
+/// xQueueCreate - Create a queue
+///
+/// QueueHandle_t xQueueCreate(UBaseType_t uxQueueLength, UBaseType_t uxItemSize);
+pub struct XQueueCreate;
+
+impl RomStubHandler for XQueueCreate {
+    fn call(&self, cpu: &mut XtensaCpu) -> u32 {
+        let capacity = cpu.get_ar(2) as usize;
+        let item_size = cpu.get_ar(3) as usize;
+
+        super::queue::QUEUE_MANAGER.lock()
+            .ok()
+            .and_then(|mut mgr| mgr.create(item_size, capacity).ok())
+            .unwrap_or(0) as u32
+    }
+
+    fn name(&self) -> &str {
+        "xQueueCreate"
+    }
+}
+
+/// xQueueSend - Send to queue (back)
+///
+/// BaseType_t xQueueSend(QueueHandle_t xQueue, const void *pvItemToQueue, TickType_t xTicksToWait);
+pub struct XQueueSend;
+
+impl RomStubHandler for XQueueSend {
+    fn call(&self, cpu: &mut XtensaCpu) -> u32 {
+        let queue_handle = cpu.get_ar(2) as usize;
+        let item_ptr = cpu.get_ar(3);
+        let timeout = cpu.get_ar(4);
+
+        let result = super::queue::QUEUE_MANAGER.lock()
+            .ok()
+            .and_then(|mut qmgr| {
+                SCHEDULER.lock().ok().and_then(|mut sched| {
+                    qmgr.get_mut(queue_handle)
+                        .ok()
+                        .map(|q| q.send(&mut sched, item_ptr, timeout, cpu))
+                })
+            })
+            .unwrap_or(false);
+
+        if result { 1 } else { 0 }
+    }
+
+    fn name(&self) -> &str {
+        "xQueueSend"
+    }
+}
+
+/// xQueueReceive - Receive from queue
+///
+/// BaseType_t xQueueReceive(QueueHandle_t xQueue, void *pvBuffer, TickType_t xTicksToWait);
+pub struct XQueueReceive;
+
+impl RomStubHandler for XQueueReceive {
+    fn call(&self, cpu: &mut XtensaCpu) -> u32 {
+        let queue_handle = cpu.get_ar(2) as usize;
+        let item_ptr = cpu.get_ar(3);
+        let timeout = cpu.get_ar(4);
+
+        let result = super::queue::QUEUE_MANAGER.lock()
+            .ok()
+            .and_then(|mut qmgr| {
+                SCHEDULER.lock().ok().and_then(|mut sched| {
+                    qmgr.get_mut(queue_handle)
+                        .ok()
+                        .map(|q| q.receive(&mut sched, item_ptr, timeout, cpu))
+                })
+            })
+            .unwrap_or(false);
+
+        if result { 1 } else { 0 }
+    }
+
+    fn name(&self) -> &str {
+        "xQueueReceive"
+    }
+}
+
+/// uxQueueMessagesWaiting - Get queue count
+///
+/// UBaseType_t uxQueueMessagesWaiting(const QueueHandle_t xQueue);
+pub struct UxQueueMessagesWaiting;
+
+impl RomStubHandler for UxQueueMessagesWaiting {
+    fn call(&self, cpu: &mut XtensaCpu) -> u32 {
+        let queue_handle = cpu.get_ar(2) as usize;
+
+        super::queue::QUEUE_MANAGER.lock()
+            .ok()
+            .and_then(|qmgr| qmgr.get(queue_handle).ok().map(|q| q.get_count()))
+            .unwrap_or(0) as u32
+    }
+
+    fn name(&self) -> &str {
+        "uxQueueMessagesWaiting"
+    }
+}
+
+/// uxQueueSpacesAvailable - Get queue available space
+///
+/// UBaseType_t uxQueueSpacesAvailable(const QueueHandle_t xQueue);
+pub struct UxQueueSpacesAvailable;
+
+impl RomStubHandler for UxQueueSpacesAvailable {
+    fn call(&self, cpu: &mut XtensaCpu) -> u32 {
+        let queue_handle = cpu.get_ar(2) as usize;
+
+        super::queue::QUEUE_MANAGER.lock()
+            .ok()
+            .and_then(|qmgr| qmgr.get(queue_handle).ok().map(|q| q.get_space()))
+            .unwrap_or(0) as u32
+    }
+
+    fn name(&self) -> &str {
+        "uxQueueSpacesAvailable"
+    }
+}
+
+/// xQueueReset - Clear queue
+///
+/// BaseType_t xQueueReset(QueueHandle_t xQueue);
+pub struct XQueueReset;
+
+impl RomStubHandler for XQueueReset {
+    fn call(&self, cpu: &mut XtensaCpu) -> u32 {
+        let queue_handle = cpu.get_ar(2) as usize;
+
+        let result = super::queue::QUEUE_MANAGER.lock()
+            .ok()
+            .and_then(|mut qmgr| {
+                qmgr.get_mut(queue_handle).ok().map(|q| {
+                    q.reset();
+                    true
+                })
+            })
+            .unwrap_or(false);
+
+        if result { 1 } else { 0 }
+    }
+
+    fn name(&self) -> &str {
+        "xQueueReset"
+    }
+}
+
+/// vQueueDelete - Delete queue
+///
+/// void vQueueDelete(QueueHandle_t xQueue);
+pub struct VQueueDelete;
+
+impl RomStubHandler for VQueueDelete {
+    fn call(&self, cpu: &mut XtensaCpu) -> u32 {
+        let queue_handle = cpu.get_ar(2) as usize;
+
+        let _ = super::queue::QUEUE_MANAGER.lock()
+            .ok()
+            .and_then(|mut qmgr| qmgr.delete(queue_handle).ok());
+
+        0
+    }
+
+    fn name(&self) -> &str {
+        "vQueueDelete"
+    }
+}
+
+// ============================================================================
+// Event Group Stubs
+// ============================================================================
+
+/// xEventGroupCreate - Create event group
+///
+/// EventGroupHandle_t xEventGroupCreate(void);
+pub struct XEventGroupCreate;
+
+impl RomStubHandler for XEventGroupCreate {
+    fn call(&self, _cpu: &mut XtensaCpu) -> u32 {
+        event_group::EVENT_GROUP_MANAGER.lock()
+            .ok()
+            .and_then(|mut mgr| mgr.create().ok())
+            .unwrap_or(0) as u32
+    }
+
+    fn name(&self) -> &str {
+        "xEventGroupCreate"
+    }
+}
+
+/// xEventGroupSetBits - Set event bits
+///
+/// EventBits_t xEventGroupSetBits(EventGroupHandle_t xEventGroup, const EventBits_t uxBitsToSet);
+pub struct XEventGroupSetBits;
+
+impl RomStubHandler for XEventGroupSetBits {
+    fn call(&self, cpu: &mut XtensaCpu) -> u32 {
+        let group_handle = cpu.get_ar(2) as usize;
+        let bits_to_set = cpu.get_ar(3);
+
+        event_group::EVENT_GROUP_MANAGER.lock()
+            .ok()
+            .and_then(|mut mgr| {
+                SCHEDULER.lock().ok().and_then(|mut sched| {
+                    mgr.get_mut(group_handle)
+                        .ok()
+                        .map(|g| g.set_bits(bits_to_set, &mut sched))
+                })
+            })
+            .unwrap_or(0)
+    }
+
+    fn name(&self) -> &str {
+        "xEventGroupSetBits"
+    }
+}
+
+/// xEventGroupClearBits - Clear event bits
+///
+/// EventBits_t xEventGroupClearBits(EventGroupHandle_t xEventGroup, const EventBits_t uxBitsToClear);
+pub struct XEventGroupClearBits;
+
+impl RomStubHandler for XEventGroupClearBits {
+    fn call(&self, cpu: &mut XtensaCpu) -> u32 {
+        let group_handle = cpu.get_ar(2) as usize;
+        let bits_to_clear = cpu.get_ar(3);
+
+        event_group::EVENT_GROUP_MANAGER.lock()
+            .ok()
+            .and_then(|mut mgr| {
+                mgr.get_mut(group_handle)
+                    .ok()
+                    .map(|g| g.clear_bits(bits_to_clear))
+            })
+            .unwrap_or(0)
+    }
+
+    fn name(&self) -> &str {
+        "xEventGroupClearBits"
+    }
+}
+
+/// xEventGroupWaitBits - Wait for event bits
+///
+/// EventBits_t xEventGroupWaitBits(
+///     EventGroupHandle_t xEventGroup,
+///     const EventBits_t uxBitsToWaitFor,
+///     const BaseType_t xClearOnExit,
+///     const BaseType_t xWaitForAllBits,
+///     TickType_t xTicksToWait
+/// );
+pub struct XEventGroupWaitBits;
+
+impl RomStubHandler for XEventGroupWaitBits {
+    fn call(&self, cpu: &mut XtensaCpu) -> u32 {
+        let group_handle = cpu.get_ar(2) as usize;
+        let bits_to_wait = cpu.get_ar(3);
+        let clear_on_exit = cpu.get_ar(4) != 0;
+        let wait_all = cpu.get_ar(5) != 0;
+        let timeout = cpu.get_ar(6);
+
+        event_group::EVENT_GROUP_MANAGER.lock()
+            .ok()
+            .and_then(|mut mgr| {
+                SCHEDULER.lock().ok().and_then(|mut sched| {
+                    mgr.get_mut(group_handle)
+                        .ok()
+                        .map(|g| g.wait_bits(bits_to_wait, clear_on_exit, wait_all, timeout, &mut sched))
+                })
+            })
+            .unwrap_or(0)
+    }
+
+    fn name(&self) -> &str {
+        "xEventGroupWaitBits"
+    }
+}
+
+/// xEventGroupGetBits - Get current event bits
+///
+/// EventBits_t xEventGroupGetBits(EventGroupHandle_t xEventGroup);
+pub struct XEventGroupGetBits;
+
+impl RomStubHandler for XEventGroupGetBits {
+    fn call(&self, cpu: &mut XtensaCpu) -> u32 {
+        let group_handle = cpu.get_ar(2) as usize;
+
+        event_group::EVENT_GROUP_MANAGER.lock()
+            .ok()
+            .and_then(|mgr| {
+                mgr.get(group_handle)
+                    .ok()
+                    .map(|g| g.get_bits())
+            })
+            .unwrap_or(0)
+    }
+
+    fn name(&self) -> &str {
+        "xEventGroupGetBits"
+    }
+}
+
+/// vEventGroupDelete - Delete event group
+///
+/// void vEventGroupDelete(EventGroupHandle_t xEventGroup);
+pub struct VEventGroupDelete;
+
+impl RomStubHandler for VEventGroupDelete {
+    fn call(&self, cpu: &mut XtensaCpu) -> u32 {
+        let group_handle = cpu.get_ar(2) as usize;
+
+        let _ = event_group::EVENT_GROUP_MANAGER.lock()
+            .ok()
+            .and_then(|mut mgr| mgr.delete(group_handle).ok());
+
+        0
+    }
+
+    fn name(&self) -> &str {
+        "vEventGroupDelete"
+    }
+}
+
+// ============================================================================
+// Software Timer Stubs
+// ============================================================================
+
+/// xTimerCreate - Create software timer
+///
+/// TimerHandle_t xTimerCreate(
+///     const char *pcTimerName,
+///     TickType_t xTimerPeriodInTicks,
+///     UBaseType_t uxAutoReload,
+///     void *pvTimerID,
+///     TimerCallbackFunction_t pxCallbackFunction
+/// );
+pub struct XTimerCreate;
+
+impl RomStubHandler for XTimerCreate {
+    fn call(&self, cpu: &mut XtensaCpu) -> u32 {
+        let name_ptr = cpu.get_ar(2);
+        let period_ticks = cpu.get_ar(3);
+        let auto_reload = cpu.get_ar(4) != 0;
+        let timer_id = cpu.get_ar(5);
+        let callback = cpu.get_ar(6);
+
+        let name = read_string_from_memory(cpu, name_ptr, 32);
+
+        sw_timer::SW_TIMER_MANAGER.lock()
+            .ok()
+            .and_then(|mut mgr| mgr.create(&name, period_ticks, auto_reload, callback, timer_id).ok())
+            .unwrap_or(0) as u32
+    }
+
+    fn name(&self) -> &str {
+        "xTimerCreate"
+    }
+}
+
+/// xTimerStart - Start software timer
+///
+/// BaseType_t xTimerStart(TimerHandle_t xTimer, TickType_t xTicksToWait);
+pub struct XTimerStart;
+
+impl RomStubHandler for XTimerStart {
+    fn call(&self, cpu: &mut XtensaCpu) -> u32 {
+        let timer_handle = cpu.get_ar(2) as usize;
+        let _timeout = cpu.get_ar(3); // Ignored in this implementation
+
+        let result = sw_timer::SW_TIMER_MANAGER.lock()
+            .ok()
+            .and_then(|mut mgr| {
+                mgr.get_mut(timer_handle).ok().map(|timer| {
+                    let period = timer.period_ticks();
+                    timer.start(period);
+                    true
+                })
+            })
+            .unwrap_or(false);
+
+        if result { 1 } else { 0 }
+    }
+
+    fn name(&self) -> &str {
+        "xTimerStart"
+    }
+}
+
+/// xTimerStop - Stop software timer
+///
+/// BaseType_t xTimerStop(TimerHandle_t xTimer, TickType_t xTicksToWait);
+pub struct XTimerStop;
+
+impl RomStubHandler for XTimerStop {
+    fn call(&self, cpu: &mut XtensaCpu) -> u32 {
+        let timer_handle = cpu.get_ar(2) as usize;
+        let _timeout = cpu.get_ar(3);
+
+        let result = sw_timer::SW_TIMER_MANAGER.lock()
+            .ok()
+            .and_then(|mut mgr| {
+                mgr.get_mut(timer_handle).ok().map(|timer| {
+                    timer.stop();
+                    true
+                })
+            })
+            .unwrap_or(false);
+
+        if result { 1 } else { 0 }
+    }
+
+    fn name(&self) -> &str {
+        "xTimerStop"
+    }
+}
+
+/// xTimerReset - Reset software timer
+///
+/// BaseType_t xTimerReset(TimerHandle_t xTimer, TickType_t xTicksToWait);
+pub struct XTimerReset;
+
+impl RomStubHandler for XTimerReset {
+    fn call(&self, cpu: &mut XtensaCpu) -> u32 {
+        let timer_handle = cpu.get_ar(2) as usize;
+        let _timeout = cpu.get_ar(3);
+
+        let result = sw_timer::SW_TIMER_MANAGER.lock()
+            .ok()
+            .and_then(|mut mgr| {
+                mgr.get_mut(timer_handle).ok().map(|timer| {
+                    timer.reset();
+                    true
+                })
+            })
+            .unwrap_or(false);
+
+        if result { 1 } else { 0 }
+    }
+
+    fn name(&self) -> &str {
+        "xTimerReset"
+    }
+}
+
+/// xTimerChangePeriod - Change timer period
+///
+/// BaseType_t xTimerChangePeriod(TimerHandle_t xTimer, TickType_t xNewPeriod, TickType_t xTicksToWait);
+pub struct XTimerChangePeriod;
+
+impl RomStubHandler for XTimerChangePeriod {
+    fn call(&self, cpu: &mut XtensaCpu) -> u32 {
+        let timer_handle = cpu.get_ar(2) as usize;
+        let new_period = cpu.get_ar(3);
+        let _timeout = cpu.get_ar(4);
+
+        let result = sw_timer::SW_TIMER_MANAGER.lock()
+            .ok()
+            .and_then(|mut mgr| {
+                mgr.get_mut(timer_handle).ok().map(|timer| {
+                    timer.change_period(new_period);
+                    true
+                })
+            })
+            .unwrap_or(false);
+
+        if result { 1 } else { 0 }
+    }
+
+    fn name(&self) -> &str {
+        "xTimerChangePeriod"
+    }
+}
+
+/// xTimerIsTimerActive - Check if timer is active
+///
+/// BaseType_t xTimerIsTimerActive(TimerHandle_t xTimer);
+pub struct XTimerIsTimerActive;
+
+impl RomStubHandler for XTimerIsTimerActive {
+    fn call(&self, cpu: &mut XtensaCpu) -> u32 {
+        let timer_handle = cpu.get_ar(2) as usize;
+
+        let is_active = sw_timer::SW_TIMER_MANAGER.lock()
+            .ok()
+            .and_then(|mgr| {
+                mgr.get(timer_handle).ok().map(|timer| timer.is_active())
+            })
+            .unwrap_or(false);
+
+        if is_active { 1 } else { 0 }
+    }
+
+    fn name(&self) -> &str {
+        "xTimerIsTimerActive"
+    }
+}
+
+/// xTimerDelete - Delete software timer
+///
+/// BaseType_t xTimerDelete(TimerHandle_t xTimer, TickType_t xTicksToWait);
+pub struct XTimerDelete;
+
+impl RomStubHandler for XTimerDelete {
+    fn call(&self, cpu: &mut XtensaCpu) -> u32 {
+        let timer_handle = cpu.get_ar(2) as usize;
+        let _timeout = cpu.get_ar(3);
+
+        let result = sw_timer::SW_TIMER_MANAGER.lock()
+            .ok()
+            .and_then(|mut mgr| mgr.delete(timer_handle).ok())
+            .is_some();
+
+        if result { 1 } else { 0 }
+    }
+
+    fn name(&self) -> &str {
+        "xTimerDelete"
+    }
 }
 
 #[cfg(test)]
