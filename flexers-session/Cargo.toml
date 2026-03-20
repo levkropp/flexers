@@ -1,0 +1,15 @@
+[package]
+name = "flexers-session"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+flexers-core = { path = "../flexers-core" }
+flexers-periph = { path = "../flexers-periph" }
+flexers-stubs = { path = "../flexers-stubs" }
+goblin = "0.8"  # For ELF parsing
+
+[dev-dependencies]

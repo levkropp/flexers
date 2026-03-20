@@ -1,0 +1,12 @@
+[package]
+name = "flexers-stubs"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+flexers-core = { path = "../flexers-core" }
+
+[dev-dependencies]

@@ -1,0 +1,18 @@
+[workspace]
+resolver = "2"
+members = [
+    "flexers-core",
+    "flexers-periph",
+    "flexers-stubs",
+    "flexers-session",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Lev Kropp <lev@kropp.dev>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/levkropp/flexers"
+
+[workspace.dependencies]
+# Shared dependencies across workspace
