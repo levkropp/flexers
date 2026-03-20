@@ -5,7 +5,7 @@ use std::sync::Arc;
 use crate::{
     dispatcher::RomStubDispatcher,
     symbol_table::SymbolTable,
-    functions::{io::*, timing::*, boot::*, memory::*, string::*, conversion::*, wifi::*, network::*, tls::*},
+    functions::{io::*, timing::*, boot::*, memory::*, string::*, conversion::*, wifi::*, network::*, tls::*, nvs::*, spiffs::*},
     freertos::stubs::*,
 };
 
@@ -160,6 +160,57 @@ pub fn create_esp32_dispatcher() -> RomStubDispatcher {
     dispatcher.register(MbedtlsCtrDrbgSeed);
     dispatcher.register(MbedtlsEntropyInit);
     dispatcher.register(MbedtlsEntropyFree);
+
+    // Register NVS (Non-Volatile Storage) functions
+    dispatcher.register(NvsFlashInit);
+    dispatcher.register(NvsFlashInitPartition);
+    dispatcher.register(NvsFlashDeinit);
+    dispatcher.register(NvsFlashErase);
+    dispatcher.register(NvsFlashErasePartition);
+    dispatcher.register(NvsOpen);
+    dispatcher.register(NvsOpenFromPartition);
+    dispatcher.register(NvsClose);
+    dispatcher.register(NvsSetU8);
+    dispatcher.register(NvsGetU8);
+    dispatcher.register(NvsSetI8);
+    dispatcher.register(NvsGetI8);
+    dispatcher.register(NvsSetU16);
+    dispatcher.register(NvsGetU16);
+    dispatcher.register(NvsSetI16);
+    dispatcher.register(NvsGetI16);
+    dispatcher.register(NvsSetU32);
+    dispatcher.register(NvsGetU32);
+    dispatcher.register(NvsSetI32);
+    dispatcher.register(NvsGetI32);
+    dispatcher.register(NvsSetU64);
+    dispatcher.register(NvsGetU64);
+    dispatcher.register(NvsSetI64);
+    dispatcher.register(NvsGetI64);
+    dispatcher.register(NvsSetStr);
+    dispatcher.register(NvsGetStr);
+    dispatcher.register(NvsSetBlob);
+    dispatcher.register(NvsGetBlob);
+    dispatcher.register(NvsCommit);
+    dispatcher.register(NvsEraseKey);
+    dispatcher.register(NvsEraseAll);
+
+    // Register SPIFFS (SPI Flash File System) functions
+    dispatcher.register(EspVfsSpiffsRegister);
+    dispatcher.register(EspVfsSpiffsUnregister);
+    dispatcher.register(EspSpiffsFormat);
+    dispatcher.register(EspSpiffsInfo);
+    dispatcher.register(SpiffsOpen);
+    dispatcher.register(SpiffsClose);
+    dispatcher.register(SpiffsRead);
+    dispatcher.register(SpiffsWrite);
+    dispatcher.register(SpiffsLseek);
+    dispatcher.register(SpiffsUnlink);
+    dispatcher.register(SpiffsRename);
+    dispatcher.register(SpiffsStat);
+    dispatcher.register(SpiffsOpendir);
+    dispatcher.register(SpiffsReaddir);
+    dispatcher.register(SpiffsClosedir);
+    dispatcher.register(SpiffsFstat);
 
     dispatcher
 }

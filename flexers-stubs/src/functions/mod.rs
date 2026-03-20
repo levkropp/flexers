@@ -13,3 +13,7 @@ pub mod network;
 pub mod socket_manager;
 pub mod tls_manager;
 pub mod tls;
+pub mod nvs_manager;
+pub mod nvs;
+pub mod spiffs_manager;
+pub mod spiffs;
