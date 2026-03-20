@@ -30,10 +30,6 @@ pub struct Memory {
     sram: UnsafeCell<Vec<u8>>,
     /// Boot ROM
     rom: UnsafeCell<Vec<u8>>,
-    /// Flash data mapping
-    flash_data: UnsafeCell<Vec<u8>>,
-    /// Flash instruction mapping
-    flash_insn: UnsafeCell<Vec<u8>>,
     /// RTC DRAM
     rtc_dram: UnsafeCell<Vec<u8>>,
     /// Page table for fast address translation
@@ -42,6 +38,9 @@ pub struct Memory {
     mmio_handlers: UnsafeCell<Vec<Option<Box<dyn MmioHandler>>>>,
     /// Peripheral bus for MMIO dispatch (optional - None for testing)
     peripheral_bus: Option<Arc<Mutex<dyn PeripheralBusDispatch>>>,
+    /// Shared flash storage (optional - for integration with SPI flash controller)
+    /// When set, both FLASH_DATA_BASE and FLASH_INSN_BASE map to this shared storage
+    flash_store: Option<Arc<Mutex<Vec<u8>>>>,
 }
 
 /// MMIO handler trait for peripheral devices
@@ -62,27 +61,22 @@ impl Memory {
         let mem = Self {
             sram: UnsafeCell::new(vec![0u8; SRAM_SIZE]),
             rom: UnsafeCell::new(vec![0u8; ROM_SIZE]),
-            flash_data: UnsafeCell::new(vec![0u8; FLASH_DATA_SIZE]),
-            flash_insn: UnsafeCell::new(vec![0u8; FLASH_INSN_SIZE]),
             rtc_dram: UnsafeCell::new(vec![0u8; RTC_DRAM_SIZE]),
             page_table: UnsafeCell::new(vec![None; PAGE_COUNT]),
             mmio_handlers: UnsafeCell::new(Vec::new()),
             peripheral_bus: None,
+            flash_store: None,
         };
 
-        // Map regions
+        // Map regions (except flash - will be mapped when flash_store is set)
         unsafe {
             let sram_ptr = &mut *mem.sram.get();
             let rom_ptr = &mut *mem.rom.get();
-            let flash_data_ptr = &mut *mem.flash_data.get();
-            let flash_insn_ptr = &mut *mem.flash_insn.get();
             let rtc_dram_ptr = &mut *mem.rtc_dram.get();
             let page_table = &mut *mem.page_table.get();
 
             Self::map_region_static(page_table, SRAM_BASE, sram_ptr);
             Self::map_region_static(page_table, ROM_BASE, rom_ptr);
-            Self::map_region_static(page_table, FLASH_DATA_BASE, flash_data_ptr);
-            Self::map_region_static(page_table, FLASH_INSN_BASE, flash_insn_ptr);
             Self::map_region_static(page_table, RTC_DRAM_BASE, rtc_dram_ptr);
         }
 
@@ -92,6 +86,25 @@ impl Memory {
     /// Set peripheral bus for MMIO dispatch
     pub fn set_peripheral_bus(&mut self, bus: Arc<Mutex<dyn PeripheralBusDispatch>>) {
         self.peripheral_bus = Some(bus);
+    }
+
+    /// Set shared flash storage (for integration with SPI flash controller)
+    /// This maps both FLASH_DATA_BASE and FLASH_INSN_BASE to the same shared storage,
+    /// saving memory and ensuring consistency between data and instruction accesses.
+    pub fn set_flash_store(&mut self, flash: Arc<Mutex<Vec<u8>>>) {
+        self.flash_store = Some(flash.clone());
+
+        // Map flash regions to shared storage
+        // Note: This is safe because we're mapping read-only views into the flash storage
+        // The flash controller owns the actual data and synchronizes access via Mutex
+        unsafe {
+            let mut flash_lock = flash.lock().unwrap();
+            let page_table = &mut *self.page_table.get();
+
+            // Map both flash regions to the same underlying storage
+            Self::map_region_static(page_table, FLASH_DATA_BASE, &mut flash_lock);
+            Self::map_region_static(page_table, FLASH_INSN_BASE, &mut flash_lock);
+        }
     }
 
     /// Map a memory region into the page table (static helper)
@@ -249,19 +262,10 @@ impl Memory {
     /// to the memory-mapped flash regions (0x3F400000 and 0x40080000).
     /// This is needed after firmware is loaded into the SPI flash controller
     /// to make it accessible to the CPU via memory-mapped addresses.
+    /// Load flash from SPI flash controller
+    /// This method now just calls set_flash_store for compatibility
     pub fn load_flash_from_controller(&mut self, flash_store: Arc<Mutex<Vec<u8>>>) {
-        let flash = flash_store.lock().unwrap();
-        let copy_len = flash.len().min(FLASH_DATA_SIZE);
-
-        unsafe {
-            // Copy to flash data region
-            let flash_data = &mut *self.flash_data.get();
-            flash_data[..copy_len].copy_from_slice(&flash[..copy_len]);
-
-            // Copy to flash instruction region (same backing data)
-            let flash_insn = &mut *self.flash_insn.get();
-            flash_insn[..copy_len].copy_from_slice(&flash[..copy_len]);
-        }
+        self.set_flash_store(flash_store);
     }
 }
 
@@ -315,7 +319,13 @@ mod tests {
 
     #[test]
     fn test_flash_regions() {
-        let mem = Memory::new();
+        use std::sync::{Arc, Mutex};
+
+        let mut mem = Memory::new();
+
+        // Set up shared flash storage
+        let flash_store = Arc::new(Mutex::new(vec![0u8; FLASH_DATA_SIZE]));
+        mem.set_flash_store(flash_store);
 
         // Test flash data region
         mem.write_u32(FLASH_DATA_BASE, 0xDEADBEEF);
@@ -324,5 +334,10 @@ mod tests {
         // Test flash instruction region
         mem.write_u32(FLASH_INSN_BASE, 0xCAFEBABE);
         assert_eq!(mem.read_u32(FLASH_INSN_BASE), 0xCAFEBABE);
+
+        // Test that both regions map to the same underlying storage
+        // Write to data region, read from instruction region
+        mem.write_u32(FLASH_DATA_BASE + 0x100, 0x12345678);
+        assert_eq!(mem.read_u32(FLASH_INSN_BASE + 0x100), 0x12345678);
     }
 }

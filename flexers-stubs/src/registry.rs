@@ -5,7 +5,7 @@ use std::sync::Arc;
 use crate::{
     dispatcher::RomStubDispatcher,
     symbol_table::SymbolTable,
-    functions::{io::*, timing::*, boot::*},
+    functions::{io::*, timing::*, boot::*, memory::*, string::*, conversion::*},
 };
 
 /// Create a ROM stub dispatcher with all common ESP32 ROM functions
@@ -35,6 +35,25 @@ pub fn create_esp32_dispatcher() -> RomStubDispatcher {
     dispatcher.register(CacheReadDisable);
     dispatcher.register(RtcGetResetReason);
     dispatcher.register(SoftwareReset);
+
+    // Register memory management functions
+    dispatcher.register(Malloc);
+    dispatcher.register(Free);
+    dispatcher.register(Calloc);
+    dispatcher.register(Realloc);
+
+    // Register string functions
+    dispatcher.register(Strcpy);
+    dispatcher.register(Strlen);
+    dispatcher.register(Strcmp);
+    dispatcher.register(Strcat);
+    dispatcher.register(Strncpy);
+    dispatcher.register(Strncmp);
+
+    // Register conversion functions
+    dispatcher.register(Atoi);
+    dispatcher.register(Itoa);
+    dispatcher.register(Strtol);
 
     dispatcher
 }

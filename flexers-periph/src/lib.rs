@@ -4,6 +4,10 @@ pub mod timer;
 pub mod gpio;
 pub mod interrupt;
 pub mod spi_flash;
+pub mod adc;
+pub mod dac;
+pub mod ledc;
+pub mod i2c;
 
 // ESP32 peripheral base addresses
 pub const UART0_BASE: u32 = 0x3FF4_0000;
@@ -16,6 +20,11 @@ pub const RTC_BASE: u32 = 0x3FF4_8000;
 pub const INTERRUPT_BASE: u32 = 0x3FF0_0000; // PRO CPU interrupt matrix
 pub const SPI0_BASE: u32 = 0x3FF4_2000; // SPI0 flash cache controller
 pub const SPI1_BASE: u32 = 0x3FF4_3000; // SPI1 general purpose flash
+pub const ADC_BASE: u32 = 0x3FF4_8800; // ADC controller
+pub const DAC_BASE: u32 = 0x3FF4_8820; // DAC controller
+pub const LEDC_BASE: u32 = 0x3FF5_9000; // LED PWM controller
+pub const I2C0_BASE: u32 = 0x3FF5_3000; // I2C controller 0
+pub const I2C1_BASE: u32 = 0x3FF6_7000; // I2C controller 1
 
 // Re-export commonly used types
 pub use bus::{PeripheralBus, AddrRange};
@@ -24,6 +33,10 @@ pub use uart::Uart;
 pub use timer::Timer;
 pub use gpio::Gpio;
 pub use spi_flash::SpiFlash;
+pub use adc::Adc;
+pub use dac::Dac;
+pub use ledc::Ledc;
+pub use i2c::I2c;
 
 // Implement PeripheralBusDispatch for PeripheralBus
 impl flexers_core::memory::PeripheralBusDispatch for PeripheralBus {
