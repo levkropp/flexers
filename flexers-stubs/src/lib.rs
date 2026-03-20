@@ -5,6 +5,7 @@ pub mod dispatcher;
 pub mod esp32_symbols;
 pub mod functions;
 pub mod registry;
+pub mod freertos;
 
 // Re-export commonly used types
 pub use symbol::{RomSymbol, FunctionSignature, ArgType};

@@ -6,6 +6,7 @@ use crate::{
     dispatcher::RomStubDispatcher,
     symbol_table::SymbolTable,
     functions::{io::*, timing::*, boot::*, memory::*, string::*, conversion::*},
+    freertos::stubs::*,
 };
 
 /// Create a ROM stub dispatcher with all common ESP32 ROM functions
@@ -54,6 +55,33 @@ pub fn create_esp32_dispatcher() -> RomStubDispatcher {
     dispatcher.register(Atoi);
     dispatcher.register(Itoa);
     dispatcher.register(Strtol);
+
+    // Register FreeRTOS task management functions
+    dispatcher.register(XTaskCreate);
+    dispatcher.register(VTaskDelete);
+    dispatcher.register(VTaskDelay);
+    dispatcher.register(VTaskDelayUntil);
+    dispatcher.register(VTaskSuspend);
+    dispatcher.register(VTaskResume);
+    dispatcher.register(VTaskPrioritySet);
+    dispatcher.register(UxTaskPriorityGet);
+    dispatcher.register(XTaskGetCurrentTaskHandle);
+    dispatcher.register(VTaskStartScheduler);
+    dispatcher.register(TaskYield);
+    dispatcher.register(XTaskGetTickCount);
+
+    // Register FreeRTOS semaphore functions
+    dispatcher.register(XSemaphoreCreateBinary);
+    dispatcher.register(XSemaphoreCreateCounting);
+    dispatcher.register(XSemaphoreGive);
+    dispatcher.register(XSemaphoreTake);
+    dispatcher.register(VSemaphoreDelete);
+
+    // Register FreeRTOS mutex functions
+    dispatcher.register(XSemaphoreCreateMutex);
+    dispatcher.register(XSemaphoreCreateRecursiveMutex);
+    dispatcher.register(XSemaphoreTakeMutex);
+    dispatcher.register(XSemaphoreGiveMutex);
 
     dispatcher
 }
