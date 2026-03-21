@@ -1,0 +1,115 @@
+---
+layout: default
+---
+
+<article class="doc">
+  <header class="doc-header">
+    <h1 class="doc-title">{{ page.title }}</h1>
+    {% if page.description %}
+    <p class="doc-description">{{ page.description }}</p>
+    {% endif %}
+  </header>
+
+  <div class="doc-content">
+    {{ content }}
+  </div>
+
+  {% if page.previous_doc or page.next_doc %}
+  <nav class="doc-navigation">
+    {% if page.previous_doc %}
+    <a href="{{ page.previous_doc.url | relative_url }}" class="prev-doc">
+      ← {{ page.previous_doc.title }}
+    </a>
+    {% endif %}
+    {% if page.next_doc %}
+    <a href="{{ page.next_doc.url | relative_url }}" class="next-doc">
+      {{ page.next_doc.title }} →
+    </a>
+    {% endif %}
+  </nav>
+  {% endif %}
+</article>
+
+<style>
+  .doc-header {
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid #e1e4e8;
+  }
+
+  .doc-title {
+    margin: 0 0 0.5rem 0;
+    font-size: 2.5rem;
+    font-weight: 700;
+  }
+
+  .doc-description {
+    margin: 0;
+    font-size: 1.2rem;
+    color: #586069;
+  }
+
+  .doc-content {
+    line-height: 1.6;
+  }
+
+  .doc-content h2 {
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 1px solid #e1e4e8;
+  }
+
+  .doc-content h3 {
+    margin-top: 1.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .doc-content code {
+    background-color: #f6f8fa;
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+  }
+
+  .doc-content pre {
+    background-color: #f6f8fa;
+    padding: 1rem;
+    border-radius: 6px;
+    overflow-x: auto;
+  }
+
+  .doc-content pre code {
+    background-color: transparent;
+    padding: 0;
+  }
+
+  .doc-navigation {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 3rem;
+    padding-top: 2rem;
+    border-top: 1px solid #e1e4e8;
+  }
+
+  .doc-navigation a {
+    text-decoration: none;
+    color: #0366d6;
+    padding: 0.5rem 1rem;
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+    transition: background-color 0.2s;
+  }
+
+  .doc-navigation a:hover {
+    background-color: #f6f8fa;
+  }
+
+  .prev-doc {
+    margin-right: auto;
+  }
+
+  .next-doc {
+    margin-left: auto;
+  }
+</style>

@@ -17,3 +17,4 @@ pub mod nvs_manager;
 pub mod nvs;
 pub mod spiffs_manager;
 pub mod spiffs;
+pub mod vfs_manager;

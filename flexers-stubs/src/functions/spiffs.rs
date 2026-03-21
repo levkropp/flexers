@@ -13,6 +13,8 @@ use super::spiffs_manager::{
     SEEK_SET, SEEK_CUR, SEEK_END,
 };
 
+use super::vfs_manager::{VFS_MANAGER, VfsBackend};
+
 /// ESP-IDF error codes
 const ESP_OK: i32 = 0;
 const ESP_FAIL: i32 = -1;
@@ -72,9 +74,10 @@ impl RomStubHandler for EspVfsSpiffsRegister {
         let base_path = read_c_string(cpu, base_path_ptr, 32);
         let partition_label = read_c_string(cpu, partition_label_ptr, 32);
 
-        match SPIFFS_MANAGER.lock() {
-            Ok(mut mgr) => {
-                match mgr.mount(&base_path, &partition_label) {
+        // Register with VFS layer
+        match VFS_MANAGER.lock() {
+            Ok(mut vfs) => {
+                match vfs.register_spiffs(&base_path, &partition_label) {
                     Ok(_) => ESP_OK as u32,
                     Err(_) => ESP_FAIL as u32,
                 }
@@ -93,11 +96,12 @@ pub struct EspVfsSpiffsUnregister;
 
 impl RomStubHandler for EspVfsSpiffsUnregister {
     fn call(&self, cpu: &mut XtensaCpu) -> u32 {
-        let _partition_label_ptr = cpu.get_ar(2);
+        let base_path_ptr = cpu.get_ar(2);
+        let base_path = read_c_string(cpu, base_path_ptr, 32);
 
-        match SPIFFS_MANAGER.lock() {
-            Ok(mut mgr) => {
-                match mgr.unmount() {
+        match VFS_MANAGER.lock() {
+            Ok(mut vfs) => {
+                match vfs.unregister(&base_path) {
                     Ok(_) => ESP_OK as u32,
                     Err(_) => ESP_FAIL as u32,
                 }
@@ -181,14 +185,40 @@ impl RomStubHandler for SpiffsOpen {
 
         let path = read_c_string(cpu, path_ptr, 256);
 
-        match SPIFFS_MANAGER.lock() {
-            Ok(mut mgr) => {
-                match mgr.open(&path, flags, mode) {
-                    Ok(fd) => fd as u32,
-                    Err(e) => {
-                        // Return -1 on error (standard POSIX behavior)
-                        // errno would be set in real system
-                        0xFFFFFFFF // -1 as u32
+        // Route through VFS
+        match VFS_MANAGER.lock() {
+            Ok(vfs) => {
+                match vfs.route_path(&path) {
+                    Some((mount_point, relative_path)) => {
+                        match &mount_point.backend {
+                            VfsBackend::Spiffs { manager_id } => {
+                                if let Some(manager) = vfs.get_spiffs_manager(*manager_id) {
+                                    match manager.lock() {
+                                        Ok(mut mgr) => {
+                                            match mgr.open(&relative_path, flags, mode) {
+                                                Ok(fd) => fd as u32,
+                                                Err(_) => 0xFFFFFFFF,
+                                            }
+                                        }
+                                        Err(_) => 0xFFFFFFFF,
+                                    }
+                                } else {
+                                    0xFFFFFFFF
+                                }
+                            }
+                        }
+                    }
+                    None => {
+                        // No mount point found - fallback to legacy SPIFFS_MANAGER
+                        match SPIFFS_MANAGER.lock() {
+                            Ok(mut mgr) => {
+                                match mgr.open(&path, flags, mode) {
+                                    Ok(fd) => fd as u32,
+                                    Err(_) => 0xFFFFFFFF,
+                                }
+                            }
+                            Err(_) => 0xFFFFFFFF,
+                        }
                     }
                 }
             }
@@ -208,10 +238,27 @@ impl RomStubHandler for SpiffsClose {
     fn call(&self, cpu: &mut XtensaCpu) -> u32 {
         let fd = cpu.get_ar(2) as i32;
 
-        match SPIFFS_MANAGER.lock() {
-            Ok(mut mgr) => {
-                match mgr.close(fd) {
-                    Ok(_) => 0,
+        // Try all SPIFFS managers (file descriptor is unique across all)
+        match VFS_MANAGER.lock() {
+            Ok(vfs) => {
+                // Try each SPIFFS instance
+                for i in 0..vfs.get_mounts().len() {
+                    if let Some(manager) = vfs.get_spiffs_manager(i) {
+                        if let Ok(mut mgr) = manager.lock() {
+                            if mgr.close(fd).is_ok() {
+                                return 0;
+                            }
+                        }
+                    }
+                }
+                // Fallback to legacy manager
+                match SPIFFS_MANAGER.lock() {
+                    Ok(mut mgr) => {
+                        match mgr.close(fd) {
+                            Ok(_) => 0,
+                            Err(_) => 0xFFFFFFFF,
+                        }
+                    }
                     Err(_) => 0xFFFFFFFF,
                 }
             }
@@ -233,16 +280,35 @@ impl RomStubHandler for SpiffsRead {
         let buf_ptr = cpu.get_ar(3);
         let count = cpu.get_ar(4) as usize;
 
-        match SPIFFS_MANAGER.lock() {
-            Ok(mut mgr) => {
-                let mut buf = vec![0u8; count];
-                match mgr.read(fd, &mut buf) {
-                    Ok(n) => {
-                        // Write data to firmware memory
-                        for i in 0..n {
-                            cpu.memory().write_u8(buf_ptr + i as u32, buf[i]);
+        // Try all SPIFFS managers
+        match VFS_MANAGER.lock() {
+            Ok(vfs) => {
+                for i in 0..vfs.get_mounts().len() {
+                    if let Some(manager) = vfs.get_spiffs_manager(i) {
+                        if let Ok(mut mgr) = manager.lock() {
+                            let mut buf = vec![0u8; count];
+                            if let Ok(n) = mgr.read(fd, &mut buf) {
+                                for j in 0..n {
+                                    cpu.memory().write_u8(buf_ptr + j as u32, buf[j]);
+                                }
+                                return n as u32;
+                            }
                         }
-                        n as u32
+                    }
+                }
+                // Fallback to legacy manager
+                match SPIFFS_MANAGER.lock() {
+                    Ok(mut mgr) => {
+                        let mut buf = vec![0u8; count];
+                        match mgr.read(fd, &mut buf) {
+                            Ok(n) => {
+                                for i in 0..n {
+                                    cpu.memory().write_u8(buf_ptr + i as u32, buf[i]);
+                                }
+                                n as u32
+                            }
+                            Err(_) => 0xFFFFFFFF,
+                        }
                     }
                     Err(_) => 0xFFFFFFFF,
                 }
@@ -265,16 +331,32 @@ impl RomStubHandler for SpiffsWrite {
         let buf_ptr = cpu.get_ar(3);
         let count = cpu.get_ar(4) as usize;
 
-        match SPIFFS_MANAGER.lock() {
-            Ok(mut mgr) => {
-                // Read data from firmware memory
-                let mut buf = vec![0u8; count];
-                for i in 0..count {
-                    buf[i] = cpu.memory().read_u8(buf_ptr + i as u32);
-                }
+        // Read data from firmware memory
+        let mut buf = vec![0u8; count];
+        for i in 0..count {
+            buf[i] = cpu.memory().read_u8(buf_ptr + i as u32);
+        }
 
-                match mgr.write(fd, &buf) {
-                    Ok(n) => n as u32,
+        // Try all SPIFFS managers
+        match VFS_MANAGER.lock() {
+            Ok(vfs) => {
+                for i in 0..vfs.get_mounts().len() {
+                    if let Some(manager) = vfs.get_spiffs_manager(i) {
+                        if let Ok(mut mgr) = manager.lock() {
+                            if let Ok(n) = mgr.write(fd, &buf) {
+                                return n as u32;
+                            }
+                        }
+                    }
+                }
+                // Fallback to legacy manager
+                match SPIFFS_MANAGER.lock() {
+                    Ok(mut mgr) => {
+                        match mgr.write(fd, &buf) {
+                            Ok(n) => n as u32,
+                            Err(_) => 0xFFFFFFFF,
+                        }
+                    }
                     Err(_) => 0xFFFFFFFF,
                 }
             }
@@ -293,13 +375,29 @@ pub struct SpiffsLseek;
 impl RomStubHandler for SpiffsLseek {
     fn call(&self, cpu: &mut XtensaCpu) -> u32 {
         let fd = cpu.get_ar(2) as i32;
-        let offset = cpu.get_ar(3) as i64; // May need to handle 64-bit
+        let offset = cpu.get_ar(3) as i64;
         let whence = cpu.get_ar(4) as i32;
 
-        match SPIFFS_MANAGER.lock() {
-            Ok(mut mgr) => {
-                match mgr.lseek(fd, offset, whence) {
-                    Ok(pos) => pos as u32,
+        // Try all SPIFFS managers
+        match VFS_MANAGER.lock() {
+            Ok(vfs) => {
+                for i in 0..vfs.get_mounts().len() {
+                    if let Some(manager) = vfs.get_spiffs_manager(i) {
+                        if let Ok(mut mgr) = manager.lock() {
+                            if let Ok(pos) = mgr.lseek(fd, offset, whence) {
+                                return pos as u32;
+                            }
+                        }
+                    }
+                }
+                // Fallback to legacy manager
+                match SPIFFS_MANAGER.lock() {
+                    Ok(mut mgr) => {
+                        match mgr.lseek(fd, offset, whence) {
+                            Ok(pos) => pos as u32,
+                            Err(_) => 0xFFFFFFFF,
+                        }
+                    }
                     Err(_) => 0xFFFFFFFF,
                 }
             }
@@ -320,11 +418,41 @@ impl RomStubHandler for SpiffsUnlink {
         let path_ptr = cpu.get_ar(2);
         let path = read_c_string(cpu, path_ptr, 256);
 
-        match SPIFFS_MANAGER.lock() {
-            Ok(mut mgr) => {
-                match mgr.remove(&path) {
-                    Ok(_) => 0,
-                    Err(_) => 0xFFFFFFFF,
+        // Route through VFS
+        match VFS_MANAGER.lock() {
+            Ok(vfs) => {
+                match vfs.route_path(&path) {
+                    Some((mount_point, relative_path)) => {
+                        match &mount_point.backend {
+                            VfsBackend::Spiffs { manager_id } => {
+                                if let Some(manager) = vfs.get_spiffs_manager(*manager_id) {
+                                    match manager.lock() {
+                                        Ok(mut mgr) => {
+                                            match mgr.remove(&relative_path) {
+                                                Ok(_) => 0,
+                                                Err(_) => 0xFFFFFFFF,
+                                            }
+                                        }
+                                        Err(_) => 0xFFFFFFFF,
+                                    }
+                                } else {
+                                    0xFFFFFFFF
+                                }
+                            }
+                        }
+                    }
+                    None => {
+                        // Fallback to legacy manager
+                        match SPIFFS_MANAGER.lock() {
+                            Ok(mut mgr) => {
+                                match mgr.remove(&path) {
+                                    Ok(_) => 0,
+                                    Err(_) => 0xFFFFFFFF,
+                                }
+                            }
+                            Err(_) => 0xFFFFFFFF,
+                        }
+                    }
                 }
             }
             Err(_) => 0xFFFFFFFF,
@@ -347,11 +475,51 @@ impl RomStubHandler for SpiffsRename {
         let old_path = read_c_string(cpu, old_path_ptr, 256);
         let new_path = read_c_string(cpu, new_path_ptr, 256);
 
-        match SPIFFS_MANAGER.lock() {
-            Ok(mut mgr) => {
-                match mgr.rename(&old_path, &new_path) {
-                    Ok(_) => 0,
-                    Err(_) => 0xFFFFFFFF,
+        // Route through VFS
+        match VFS_MANAGER.lock() {
+            Ok(vfs) => {
+                match vfs.route_path(&old_path) {
+                    Some((mount_point, old_relative)) => {
+                        // Both paths must be on same mount point
+                        match vfs.route_path(&new_path) {
+                            Some((new_mount, new_relative)) => {
+                                if mount_point.base_path == new_mount.base_path {
+                                    match &mount_point.backend {
+                                        VfsBackend::Spiffs { manager_id } => {
+                                            if let Some(manager) = vfs.get_spiffs_manager(*manager_id) {
+                                                match manager.lock() {
+                                                    Ok(mut mgr) => {
+                                                        match mgr.rename(&old_relative, &new_relative) {
+                                                            Ok(_) => 0,
+                                                            Err(_) => 0xFFFFFFFF,
+                                                        }
+                                                    }
+                                                    Err(_) => 0xFFFFFFFF,
+                                                }
+                                            } else {
+                                                0xFFFFFFFF
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    0xFFFFFFFF // Cross-mount rename not supported
+                                }
+                            }
+                            None => 0xFFFFFFFF,
+                        }
+                    }
+                    None => {
+                        // Fallback to legacy manager
+                        match SPIFFS_MANAGER.lock() {
+                            Ok(mut mgr) => {
+                                match mgr.rename(&old_path, &new_path) {
+                                    Ok(_) => 0,
+                                    Err(_) => 0xFFFFFFFF,
+                                }
+                            }
+                            Err(_) => 0xFFFFFFFF,
+                        }
+                    }
                 }
             }
             Err(_) => 0xFFFFFFFF,
@@ -373,20 +541,51 @@ impl RomStubHandler for SpiffsStat {
 
         let path = read_c_string(cpu, path_ptr, 256);
 
-        match SPIFFS_MANAGER.lock() {
-            Ok(mgr) => {
-                match mgr.stat(&path) {
-                    Ok(stat) => {
-                        // Write stat struct to memory
-                        // struct stat layout (simplified):
-                        // - st_mode (u32) at offset 0
-                        // - st_size (i32) at offset 16
-                        let mode = if stat.is_dir { 0x4000 } else { 0x8000 };
-                        cpu.memory().write_u32(stat_ptr, mode);
-                        cpu.memory().write_u32(stat_ptr + 16, stat.size as u32);
-                        0
+        // Route through VFS
+        match VFS_MANAGER.lock() {
+            Ok(vfs) => {
+                match vfs.route_path(&path) {
+                    Some((mount_point, relative_path)) => {
+                        match &mount_point.backend {
+                            VfsBackend::Spiffs { manager_id } => {
+                                if let Some(manager) = vfs.get_spiffs_manager(*manager_id) {
+                                    match manager.lock() {
+                                        Ok(mgr) => {
+                                            match mgr.stat(&relative_path) {
+                                                Ok(stat) => {
+                                                    let mode = if stat.is_dir { 0x4000 } else { 0x8000 };
+                                                    cpu.memory().write_u32(stat_ptr, mode);
+                                                    cpu.memory().write_u32(stat_ptr + 16, stat.size as u32);
+                                                    0
+                                                }
+                                                Err(_) => 0xFFFFFFFF,
+                                            }
+                                        }
+                                        Err(_) => 0xFFFFFFFF,
+                                    }
+                                } else {
+                                    0xFFFFFFFF
+                                }
+                            }
+                        }
                     }
-                    Err(_) => 0xFFFFFFFF,
+                    None => {
+                        // Fallback to legacy manager
+                        match SPIFFS_MANAGER.lock() {
+                            Ok(mgr) => {
+                                match mgr.stat(&path) {
+                                    Ok(stat) => {
+                                        let mode = if stat.is_dir { 0x4000 } else { 0x8000 };
+                                        cpu.memory().write_u32(stat_ptr, mode);
+                                        cpu.memory().write_u32(stat_ptr + 16, stat.size as u32);
+                                        0
+                                    }
+                                    Err(_) => 0xFFFFFFFF,
+                                }
+                            }
+                            Err(_) => 0xFFFFFFFF,
+                        }
+                    }
                 }
             }
             Err(_) => 0xFFFFFFFF,
@@ -410,11 +609,41 @@ impl RomStubHandler for SpiffsOpendir {
         let path_ptr = cpu.get_ar(2);
         let path = read_c_string(cpu, path_ptr, 256);
 
-        match SPIFFS_MANAGER.lock() {
-            Ok(mut mgr) => {
-                match mgr.opendir(&path) {
-                    Ok(fd) => fd as u32,
-                    Err(_) => 0,
+        // Route through VFS
+        match VFS_MANAGER.lock() {
+            Ok(vfs) => {
+                match vfs.route_path(&path) {
+                    Some((mount_point, relative_path)) => {
+                        match &mount_point.backend {
+                            VfsBackend::Spiffs { manager_id } => {
+                                if let Some(manager) = vfs.get_spiffs_manager(*manager_id) {
+                                    match manager.lock() {
+                                        Ok(mut mgr) => {
+                                            match mgr.opendir(&relative_path) {
+                                                Ok(fd) => fd as u32,
+                                                Err(_) => 0,
+                                            }
+                                        }
+                                        Err(_) => 0,
+                                    }
+                                } else {
+                                    0
+                                }
+                            }
+                        }
+                    }
+                    None => {
+                        // Fallback to legacy manager
+                        match SPIFFS_MANAGER.lock() {
+                            Ok(mut mgr) => {
+                                match mgr.opendir(&path) {
+                                    Ok(fd) => fd as u32,
+                                    Err(_) => 0,
+                                }
+                            }
+                            Err(_) => 0,
+                        }
+                    }
                 }
             }
             Err(_) => 0,
@@ -433,31 +662,43 @@ impl RomStubHandler for SpiffsReaddir {
     fn call(&self, cpu: &mut XtensaCpu) -> u32 {
         let dir_fd = cpu.get_ar(2) as i32;
 
-        match SPIFFS_MANAGER.lock() {
-            Ok(mut mgr) => {
-                match mgr.readdir(dir_fd) {
-                    Ok(Some(entry)) => {
-                        // Allocate space for dirent struct in firmware memory
-                        // For simplicity, we'll use a static buffer at a known address
-                        // In a real implementation, we'd allocate from heap
-
-                        // dirent struct layout:
-                        // - d_ino (u32) at offset 0
-                        // - d_type (u8) at offset 16
-                        // - d_name (char[256]) at offset 17
-
-                        let dirent_ptr = 0x3FFB0000; // Static buffer in DRAM
-
-                        cpu.memory().write_u32(dirent_ptr, 1); // d_ino
-                        let d_type = if entry.is_dir { 4 } else { 8 }; // DT_DIR or DT_REG
-                        cpu.memory().write_u8(dirent_ptr + 16, d_type);
-
-                        // Write filename
-                        write_c_string(cpu, dirent_ptr + 17, &entry.name, 256);
-
-                        dirent_ptr
+        // Try all SPIFFS managers
+        match VFS_MANAGER.lock() {
+            Ok(vfs) => {
+                for i in 0..vfs.get_mounts().len() {
+                    if let Some(manager) = vfs.get_spiffs_manager(i) {
+                        if let Ok(mut mgr) = manager.lock() {
+                            if let Ok(result) = mgr.readdir(dir_fd) {
+                                if let Some(entry) = result {
+                                    let dirent_ptr = 0x3FFB0000;
+                                    cpu.memory().write_u32(dirent_ptr, 1);
+                                    let d_type = if entry.is_dir { 4 } else { 8 };
+                                    cpu.memory().write_u8(dirent_ptr + 16, d_type);
+                                    write_c_string(cpu, dirent_ptr + 17, &entry.name, 256);
+                                    return dirent_ptr;
+                                } else {
+                                    return 0; // End of directory
+                                }
+                            }
+                        }
                     }
-                    Ok(None) => 0, // End of directory
+                }
+                // Fallback to legacy manager
+                match SPIFFS_MANAGER.lock() {
+                    Ok(mut mgr) => {
+                        match mgr.readdir(dir_fd) {
+                            Ok(Some(entry)) => {
+                                let dirent_ptr = 0x3FFB0000;
+                                cpu.memory().write_u32(dirent_ptr, 1);
+                                let d_type = if entry.is_dir { 4 } else { 8 };
+                                cpu.memory().write_u8(dirent_ptr + 16, d_type);
+                                write_c_string(cpu, dirent_ptr + 17, &entry.name, 256);
+                                dirent_ptr
+                            }
+                            Ok(None) => 0,
+                            Err(_) => 0,
+                        }
+                    }
                     Err(_) => 0,
                 }
             }
@@ -477,10 +718,26 @@ impl RomStubHandler for SpiffsClosedir {
     fn call(&self, cpu: &mut XtensaCpu) -> u32 {
         let dir_fd = cpu.get_ar(2) as i32;
 
-        match SPIFFS_MANAGER.lock() {
-            Ok(mut mgr) => {
-                match mgr.closedir(dir_fd) {
-                    Ok(_) => 0,
+        // Try all SPIFFS managers
+        match VFS_MANAGER.lock() {
+            Ok(vfs) => {
+                for i in 0..vfs.get_mounts().len() {
+                    if let Some(manager) = vfs.get_spiffs_manager(i) {
+                        if let Ok(mut mgr) = manager.lock() {
+                            if mgr.closedir(dir_fd).is_ok() {
+                                return 0;
+                            }
+                        }
+                    }
+                }
+                // Fallback to legacy manager
+                match SPIFFS_MANAGER.lock() {
+                    Ok(mut mgr) => {
+                        match mgr.closedir(dir_fd) {
+                            Ok(_) => 0,
+                            Err(_) => 0xFFFFFFFF,
+                        }
+                    }
                     Err(_) => 0xFFFFFFFF,
                 }
             }

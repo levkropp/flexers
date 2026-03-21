@@ -78,8 +78,12 @@ pub struct SpiffsManager {
 
 impl SpiffsManager {
     pub fn new() -> Self {
+        Self::new_with_root(PathBuf::from("/tmp/esp32-spiffs"))
+    }
+
+    pub fn new_with_root(root: PathBuf) -> Self {
         Self {
-            root: PathBuf::from("/tmp/esp32-spiffs"),
+            root,
             mounted: false,
             files: HashMap::new(),
             next_fd: 100, // Start at 100 to avoid conflicts with stdio (0,1,2)
@@ -96,7 +100,8 @@ impl SpiffsManager {
         // Set partition label
         self.partition_label = partition_label.to_string();
 
-        // Create root directory if it doesn't exist
+        // Create host directory for this partition
+        // The root should already include the partition name from new_with_root()
         if let Err(_) = std::fs::create_dir_all(&self.root) {
             return Err(SPIFFS_ERR_IO);
         }
